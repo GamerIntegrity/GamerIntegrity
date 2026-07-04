@@ -1,0 +1,438 @@
+<Window
+    x:Class="GamerIntegrity.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="GamerIntegrity"
+    Icon="logo.ico"
+    Width="1440"
+    Height="900"
+    MinWidth="1040"
+    MinHeight="700"
+    WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <DataTemplate x:Key="MetricTemplate">
+            <Border Style="{StaticResource Metric.Card}" Width="236" Margin="0,0,14,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Height="3" Background="{StaticResource Brush.Accent}" CornerRadius="2" HorizontalAlignment="Left" Width="42" Margin="0,0,0,12" />
+                    <TextBlock Grid.Row="1" Text="{Binding Label}" Style="{StaticResource Text.Kicker}" />
+                    <TextBlock Grid.Row="2" Text="{Binding Value}" FontSize="28" FontWeight="SemiBold" Margin="0,9,0,4" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Text="{Binding Note}" Style="{StaticResource Text.Small}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="EvidenceItemTemplate">
+            <Border Style="{StaticResource Evidence.Row}">
+                <Grid Margin="12,11">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="96" />
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="2.05*" />
+                        <ColumnDefinition Width="118" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border x:Name="SeverityBadge" Grid.Column="0" Style="{StaticResource Badge.Accent}" VerticalAlignment="Top">
+                        <TextBlock x:Name="SeverityText" Text="{Binding Severity}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Brush.Accent}" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="10,0,14,0">
+                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Source}" Style="{StaticResource Text.Small}" Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Margin="0,0,14,0">
+                        <Border Background="{StaticResource Brush.PaperMuted}" BorderBrush="{StaticResource Brush.Rule}" BorderThickness="1" Padding="8,6">
+                            <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Code}" />
+                        </Border>
+                        <TextBlock Text="{Binding Extra}" Style="{StaticResource Text.Small}" Margin="0,6,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="{Binding When}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding ConfidenceText}" Style="{StaticResource Text.Small}" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding ScoreText}" Style="{StaticResource Text.Small}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Severity}" Value="Critical">
+                    <Setter TargetName="SeverityBadge" Property="Style" Value="{StaticResource Badge.Danger}" />
+                    <Setter TargetName="SeverityText" Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Severity}" Value="High">
+                    <Setter TargetName="SeverityBadge" Property="Style" Value="{StaticResource Badge.Danger}" />
+                    <Setter TargetName="SeverityText" Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Severity}" Value="Medium">
+                    <Setter TargetName="SeverityBadge" Property="Style" Value="{StaticResource Badge.Warning}" />
+                    <Setter TargetName="SeverityText" Property="Foreground" Value="{StaticResource Brush.Warning}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Severity}" Value="Low">
+                    <Setter TargetName="SeverityBadge" Property="Style" Value="{StaticResource Badge.Success}" />
+                    <Setter TargetName="SeverityText" Property="Foreground" Value="{StaticResource Brush.Success}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Severity}" Value="Info">
+                    <Setter TargetName="SeverityBadge" Property="Style" Value="{StaticResource Badge.Accent}" />
+                    <Setter TargetName="SeverityText" Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SectionTemplate">
+            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="{Binding IsExpanded}">
+                <Expander.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Description}" Style="{StaticResource Text.Small}" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Style="{StaticResource Badge.Accent}" VerticalAlignment="Center" Margin="14,0,0,0">
+                            <TextBlock Text="{Binding CountText}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Brush.Accent}" />
+                        </Border>
+                    </Grid>
+                </Expander.Header>
+
+                <StackPanel>
+                    <Border Style="{StaticResource Evidence.Header}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96" />
+                                <ColumnDefinition Width="1.15*" />
+                                <ColumnDefinition Width="2.05*" />
+                                <ColumnDefinition Width="118" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Flag" Style="{StaticResource Text.Kicker}" />
+                            <TextBlock Grid.Column="1" Text="What matched" Style="{StaticResource Text.Kicker}" Margin="10,0,14,0" />
+                            <TextBlock Grid.Column="2" Text="Details" Style="{StaticResource Text.Kicker}" />
+                            <TextBlock Grid.Column="3" Text="Time / Score" Style="{StaticResource Text.Kicker}" />
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding PagedItems}" ItemTemplate="{StaticResource EvidenceItemTemplate}" />
+
+                    <Border Style="{StaticResource Pagination.Bar}" Visibility="{Binding PaginationVisibility}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="{Binding PageStatusText}" Style="{StaticResource Text.Small}" VerticalAlignment="Center" />
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Content="Previous" Style="{StaticResource Button.Flat}" Padding="10,5" Margin="0,0,8,0" Tag="{Binding}" Click="SectionPreviousPage_Click" IsEnabled="{Binding CanGoPrevious}" />
+                                <Button Content="Next" Style="{StaticResource Button.Flat}" Padding="10,5" Tag="{Binding}" Click="SectionNextPage_Click" IsEnabled="{Binding CanGoNext}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Expander>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Style="{StaticResource Shell.Root}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="62" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Shell.TopBar}">
+            <Grid x:Name="TopBarLayout">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="36" Height="36" Background="{StaticResource Brush.AccentSoft}" BorderBrush="{StaticResource Brush.AccentLine}" BorderThickness="1" CornerRadius="7" Margin="0,0,12,0">
+                        <Image Source="logo.png" Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="GamerIntegrity" Style="{StaticResource Text.Brand}" />
+                        <TextBlock Text="Non-gate kept PC checker for all gamers" Style="{StaticResource Text.Small}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <Grid x:Name="SearchPanel" Grid.Column="1" MinWidth="280" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,18,0" Visibility="Collapsed">
+                    <TextBox x:Name="SearchBox" Height="38" Padding="4,0,10,0" TextChanged="SearchBox_TextChanged" ToolTip="Search loaded detections" />
+                    <TextBlock x:Name="SearchPlaceholder" Text="Search detections, paths, downloads, devices..." Foreground="{StaticResource Brush.TextSoft}" Margin="6,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
+                </Grid>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BuyMeCoffeeButton" Style="{StaticResource Button.Support}" Content="Buy Me a Coffee" Margin="0,0,8,0" Click="BuyMeCoffeeButton_Click" />
+                    <Button x:Name="GithubButton" Style="{StaticResource Button.Flat}" Content="GitHub" Click="GithubButton_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftSidebarColumn" Width="0" MinWidth="0" MaxWidth="320" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="SidebarPanel" Grid.Column="0" Style="{StaticResource Shell.Sidebar}" Visibility="Collapsed" Opacity="0">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="SidebarSlideTransform" X="-268" />
+                </Border.RenderTransform>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Table of Contents" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,14" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="Report" Style="{StaticResource Text.Kicker}" Margin="8,0,0,8" />
+                            <Button x:Name="NavResult" Style="{StaticResource Nav.Item}" Tag="Active" Content="Overview" Click="Nav_Click" />
+                            <Button x:Name="NavFlags" Style="{StaticResource Nav.Item}" Content="Detections" Click="Nav_Click" />
+
+                            <Border Style="{StaticResource Divider}" />
+
+                            <TextBlock Text="Categories" Style="{StaticResource Text.Kicker}" Margin="8,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding Sections}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource Nav.Item}" Content="{Binding Title}" CommandParameter="{Binding}" Click="NavSection_Click" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Border Grid.Row="2" Style="{StaticResource Sidebar.Panel}" Margin="0,14,0,0">
+                        <StackPanel>
+                            <TextBlock Text="v1.0.0" FontWeight="SemiBold" />
+                            <TextBlock Text="All rights reserved by DayZero Anticheat." Style="{StaticResource Text.Small}" Margin="0,6,0,10" />
+                            <Button Style="{StaticResource Button.Support}" Content="Support DayZero" Click="BuyMeCoffeeButton_Click" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <ScrollViewer x:Name="ArticleScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <Border x:Name="ArticlePageBorder" Style="{StaticResource Article.Page}">
+                    <StackPanel>
+                        <StackPanel x:Name="OverviewSection">
+                            <TextBlock Text="GamerIntegrity / Scan" Style="{StaticResource Text.Small}" Margin="0,0,0,12" />
+                            <TextBlock Text="Scan" Style="{StaticResource Text.PageTitle}" />
+
+                            <Border Style="{StaticResource Article.Rule}" />
+
+                            <StackPanel HorizontalAlignment="Center" Margin="0,8,0,30" Width="360">
+                                <Button x:Name="RunScanButton" Style="{StaticResource Button.Primary}" Content="Run Scan" Height="48" FontSize="15" Padding="24,11" Click="RunScanButton_Click" />
+                                <TextBlock Text="GamerIntegrity checks this PC locally. Results stay in the app until you choose to export." Style="{StaticResource Text.Muted}" TextAlignment="Center" Margin="0,12,0,12" />
+                                <Button Style="{StaticResource Button.Support}" Content="Support on Buy Me a Coffee" Click="BuyMeCoffeeButton_Click" />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource Section.Header}">
+                                <TextBlock Text="FAQ" Style="{StaticResource Text.SectionTitle}" />
+                            </Border>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="What does GamerIntegrity scan?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="It checks Windows traces that can point to cheat tools, launch history, downloads, connected devices, source/build artifacts, drivers, startup entries, and related PC activity." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Does this prove someone cheated?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="No single flag should be treated as automatic proof. Strong results usually come from multiple matching traces that line up, like cheat files, launch traces, browser/download hits, and suspicious build/source artifacts." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="What is a flag?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="A flag is something the scanner matched against known rules or suspicious patterns. Some flags are high-signal, while others are context clues that need to be checked with the rest of the report." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Why do some timestamps look missing or weird?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="Windows stores activity in different places, and not every source has a clean timestamp. Browser history, Prefetch, AmCache, USB history, and file metadata can all use different time fields or be cleaned by Windows/tools." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Should I use Redacted or Non-Redacted?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="Use Redacted when sharing results with someone else. Use Non-Redacted only on the local PC when you need the full view, because private usernames, paths, and device details may be visible." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Are report files created automatically?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="No. Results load inside GamerIntegrity first. Files are only created when you choose an export option after the scan results are loaded." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Does GamerIntegrity upload anything?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="No. This app is designed to scan locally and show the results locally. Exported files are created on this PC only when you choose to export." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Do I need to run it as admin?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="Admin is recommended. Some Windows traces are restricted, so running as admin helps the scan return more complete results." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Can there be false positives?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="Yes. File names, old downloads, developer tools, and unrelated projects can sometimes look suspicious by name alone. Use the category, confidence, score, timestamp, and matching details before making a decision." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Why does browser history matter?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="Browser and download hits can show searches, downloads, domains, or source pages tied to cheat tooling. They are context evidence and should be compared with launch traces and files on disk." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+
+                            <Expander Style="{StaticResource Wiki.Expander}" IsExpanded="False">
+                                <Expander.Header>
+                                    <TextBlock Text="Does the scan change the PC?" FontWeight="SemiBold" />
+                                </Expander.Header>
+                                <TextBlock Text="The scanner reads PC traces and prepares an in-app report. It does not install drivers, remove files, ban players, or change game files." Style="{StaticResource Text.Muted}" />
+                            </Expander>
+                        </StackPanel>
+
+                        <Grid x:Name="ScanningSection" Visibility="Collapsed" Margin="0,0,0,0" MaxHeight="{Binding ActualHeight, ElementName=ArticleScroll}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="288" />
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Style="{StaticResource Section.Header}">
+                                <TextBlock Text="Scan progress" Style="{StaticResource Text.SectionTitle}" />
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource InfoBox.Warning}">
+                                <StackPanel>
+                                    <TextBlock x:Name="ProgressStageText" Text="Getting scan ready..." FontWeight="SemiBold" />
+                                    <ProgressBar x:Name="ScanProgressBar" Height="14" Minimum="0" Maximum="100" Value="0" Margin="0,12,0,0" />
+                                    <TextBlock x:Name="ProgressPercentText" Text="0%" Style="{StaticResource Text.Small}" Margin="0,7,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border x:Name="ReportChoicePanel" Grid.Row="2" Style="{StaticResource InfoBox.Accent}" Visibility="Collapsed">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Choose what to view" Style="{StaticResource Text.SubsectionTitle}" />
+                                        <TextBlock Text="Use Redacted for sharing. Use Non-Redacted only for the full local PC view." Style="{StaticResource Text.Muted}" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                                        <Button Content="Redacted" Style="{StaticResource Button.Flat}" Margin="0,0,8,0" Click="ChooseRedactedButton_Click" />
+                                        <Button Content="Non-Redacted" Style="{StaticResource Button.Primary}" Click="ChooseNonRedactedButton_Click" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Border x:Name="ActivitySection" Grid.Row="3" Style="{StaticResource InfoBox}" Margin="0,0,0,14">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Grid.Row="0">
+                                        <TextBlock Text="Live scan log" Style="{StaticResource Text.SubsectionTitle}" />
+                                        <TextBlock Text="Live scan steps and access notes show here." Style="{StaticResource Text.Small}" Margin="0,5,0,10" />
+                                    </StackPanel>
+                                    <TextBox x:Name="LogBox" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" FontFamily="Consolas" FontSize="12" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <StackPanel x:Name="ResultsSection" Visibility="Collapsed" Opacity="0" Margin="0,0,0,0">
+                            <Border Style="{StaticResource Section.Header}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Overview" Style="{StaticResource Text.SectionTitle}" />
+                                        <TextBlock x:Name="ReportModeText" Text="Loaded scan view" Style="{StaticResource Text.Small}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                        <Button x:Name="ExportRedactedButton" Style="{StaticResource Button.Flat}" Content="Export Redacted" Margin="0,0,8,0" Click="ExportRedactedButton_Click" />
+                                        <Button x:Name="ExportNonRedactedButton" Style="{StaticResource Button.Flat}" Content="Export Non-Redacted" Click="ExportNonRedactedButton_Click" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Border x:Name="VerdictBox" Style="{StaticResource InfoBox.Accent}">
+                                <StackPanel>
+                                    <TextBlock Text="Scan result" Style="{StaticResource Text.Kicker}" />
+                                    <TextBlock Text="{Binding Verdict}" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,4" />
+                                    <TextBlock Text="{Binding VerdictBasis}" Style="{StaticResource Text.Muted}" />
+                                </StackPanel>
+                            </Border>
+
+                            <ItemsControl x:Name="MetricsItemsControl" ItemsSource="{Binding Metrics}" ItemTemplate="{StaticResource MetricTemplate}" Margin="0,4,0,8">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <StackPanel x:Name="EvidenceSection" Margin="0,12,0,0">
+                                <Border Style="{StaticResource Section.Header}">
+                                    <TextBlock Text="Detections" Style="{StaticResource Text.SectionTitle}" />
+                                </Border>
+                                <ItemsControl x:Name="SectionsItemsControl" ItemsSource="{Binding Sections}" ItemTemplate="{StaticResource SectionTemplate}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid x:Name="AdminGatePanel" Grid.RowSpan="2" Visibility="Collapsed" Panel.ZIndex="20" Background="{StaticResource Brush.Page}">
+            <Button x:Name="RestartAsAdminButton" Style="{StaticResource Button.Danger}" Content="Restart as Admin" Width="230" Height="54" FontSize="16" Click="RestartAsAdminButton_Click" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+
+        <Grid x:Name="ModalOverlay" Grid.RowSpan="2" Visibility="Collapsed" Panel.ZIndex="30" Background="#66000000">
+            <Border Style="{StaticResource Modal.Card}" Width="460" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock x:Name="ModalTitleText" Text="GamerIntegrity" Style="{StaticResource Text.SectionTitle}" />
+                    <TextBlock x:Name="ModalMessageText" Text="" Style="{StaticResource Text.Muted}" Margin="0,4,0,18" />
+                    <Button x:Name="ModalOkButton" Style="{StaticResource Button.Primary}" Content="OK" Width="96" HorizontalAlignment="Right" Click="ModalOkButton_Click" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
