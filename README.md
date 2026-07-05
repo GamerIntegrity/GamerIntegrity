@@ -5,12 +5,6 @@ It gives you an in-app scan flow, clean result pages, redacted sharing, non-reda
 
 ---
 
-## Preview
-
-> ![GamerIntegrity Scan Page](assets/preview-scan.png)
-> ![GamerIntegrity Results Page](assets/preview-results.png)
-> ![GamerIntegrity Detections](assets/preview-detections.png)
-
 ## What GamerIntegrity Does
 
 GamerIntegrity helps check a Windows PC for integrity-related flags, launch traces, suspicious folders, browser/download hits, startup traces, external device history, hardware details, and other signals that may matter during a fair-play review.
