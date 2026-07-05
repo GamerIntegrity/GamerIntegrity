@@ -368,7 +368,9 @@ namespace GamerIntegrity
             {
                 string display = item.Item1;
                 string location = item.Item2;
-                FileNameRule best = BestRuleMatch(display + " " + location, rules);
+                string evidenceValue = display + " " + location;
+                FileNameRule best = BestRuleMatch(evidenceValue, rules);
+                best = AdjustRuleForEvidenceContext(best, evidenceValue, "Installed");
                 if (best == null) continue;
                 matches.Add(new FileNameMatch
                 {
@@ -438,6 +440,7 @@ namespace GamerIntegrity
             {
                 string name = Path.GetFileName(file);
                 var best = BestRuleMatch(name, rules);
+                best = AdjustRuleForEvidenceContext(best, name, "ExecutionPrefetch");
                 if (best == null) continue;
                 artifacts.Add(new ExecutionArtifact
                 {
@@ -467,18 +470,20 @@ namespace GamerIntegrity
                 int pos = lower.IndexOf(rule.Token.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
                 if (pos < 0) continue;
                 string snippet = Snippet(data, pos, rule.Token.Length);
+                FileNameRule adjustedRule = AdjustRuleForEvidenceContext(rule, snippet, "ExecutionAmCache");
+                if (adjustedRule == null) continue;
                 artifacts.Add(new ExecutionArtifact
                 {
                     Source = "AmCache",
                     Name = rule.Token,
                     Path = amcache,
-                    Token = rule.Token,
-                    Label = rule.Label,
+                    Token = adjustedRule.Token,
+                    Label = adjustedRule.Label,
                     When = ScannerHelpers.FileTimeString(amcache),
                     Details = ScannerHelpers.CollapseWhitespaceForDisplay(snippet),
-                    Severity = rule.Severity,
-                    Confidence = Math.Max(50, rule.Confidence - 8),
-                    Score = Math.Max(5, rule.Score - 10)
+                    Severity = adjustedRule.Severity,
+                    Confidence = Math.Max(50, adjustedRule.Confidence - 8),
+                    Score = Math.Max(5, adjustedRule.Score - 10)
                 });
             }
         }
@@ -522,7 +527,9 @@ namespace GamerIntegrity
                     string path = "";
                     try { name = p.ProcessName; } catch { }
                     try { path = p.MainModule?.FileName ?? ""; } catch { }
-                    var best = BestRuleMatch(name + " " + path, rules);
+                    string evidenceValue = name + " " + path;
+                    var best = BestRuleMatch(evidenceValue, rules);
+                    best = AdjustRuleForEvidenceContext(best, evidenceValue, "RuntimeProcess");
                     if (best == null) continue;
                     artifacts.Add(new RuntimeArtifact
                     {
@@ -550,7 +557,9 @@ namespace GamerIntegrity
                     string display = "";
                     try { name = svc.ServiceName; display = svc.DisplayName; } catch { }
                     string path = GetServiceImagePath(name);
-                    var best = BestRuleMatch(name + " " + display + " " + path, rules);
+                    string evidenceValue = name + " " + display + " " + path;
+                    var best = BestRuleMatch(evidenceValue, rules);
+                    best = AdjustRuleForEvidenceContext(best, evidenceValue, "RuntimeService");
                     if (best == null) continue;
                     artifacts.Add(new RuntimeArtifact
                     {
@@ -599,7 +608,9 @@ namespace GamerIntegrity
                 foreach (var kv in ScannerHelpers.ReadRegistryValues(key.Item1, key.Item2, key.Item3))
                 {
                     string value = kv.Value == null ? "" : kv.Value.ToString();
-                    var best = BestRuleMatch(kv.Key + " " + value, rules);
+                    string evidenceValue = kv.Key + " " + value;
+                    var best = BestRuleMatch(evidenceValue, rules);
+                    best = AdjustRuleForEvidenceContext(best, evidenceValue, "StartupRegistry");
                     if (best == null) continue;
                     artifacts.Add(new RuntimeArtifact
                     {
@@ -628,7 +639,9 @@ namespace GamerIntegrity
                 string text = "";
                 try { text = File.ReadAllText(file); } catch { }
                 if (text.Length == 0) continue;
-                var best = BestRuleMatch(Path.GetFileName(file) + " " + text, rules);
+                string evidenceValue = Path.GetFileName(file) + " " + text;
+                var best = BestRuleMatch(evidenceValue, rules);
+                best = AdjustRuleForEvidenceContext(best, evidenceValue, "ScheduledTask");
                 if (best == null) continue;
                 artifacts.Add(new RuntimeArtifact
                 {
@@ -945,17 +958,20 @@ namespace GamerIntegrity
                     {
                         int pos = lower.IndexOf(variant.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
                         if (pos < 0) continue;
+                        string snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(data, pos, variant.Length));
+                        FileNameRule adjustedRule = AdjustRuleForEvidenceContext(rule, snippet, "BrowserHistory");
+                        if (adjustedRule == null) continue;
                         matches.Add(new BrowserHistoryMatch
                         {
                             Browser = source.Browser,
                             Profile = source.Profile,
                             HistoryPath = source.HistoryPath,
-                            Token = rule.Token,
-                            Label = rule.Label,
-                            Snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(data, pos, variant.Length)),
-                            Severity = rule.Severity,
-                            Confidence = rule.Confidence,
-                            Score = rule.Score
+                            Token = adjustedRule.Token,
+                            Label = adjustedRule.Label,
+                            Snippet = snippet,
+                            Severity = adjustedRule.Severity,
+                            Confidence = adjustedRule.Confidence,
+                            Score = adjustedRule.Score
                         });
                         break;
                     }
@@ -989,13 +1005,16 @@ namespace GamerIntegrity
                     string snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(data, pos, rule.Token.Length));
                     string url = ExtractBestUrl(snippet, rule.Token);
                     string local = ExtractFirstWindowsPath(snippet);
+                    string evidenceKind = string.IsNullOrWhiteSpace(local) ? "BrowserSource" : "BrowserDownloadLocal";
+                    FileNameRule adjustedRule = AdjustRuleForEvidenceContext(rule, url + " " + local + " " + snippet, evidenceKind);
+                    if (adjustedRule == null) continue;
                     var match = new BrowserDownloadMatch
                     {
                         Browser = source.Browser,
                         Profile = source.Profile,
                         HistoryPath = source.HistoryPath,
-                        Token = rule.Token,
-                        Label = rule.Label,
+                        Token = adjustedRule.Token,
+                        Label = adjustedRule.Label,
                         Url = url,
                         Domain = DomainFromUrl(url),
                         LocalPath = local,
@@ -1003,9 +1022,9 @@ namespace GamerIntegrity
                         Snippet = snippet,
                         When = ScannerHelpers.FileTimeString(source.HistoryPath),
                         TimeType = "History DB last modified",
-                        Severity = rule.Severity,
-                        Confidence = string.IsNullOrWhiteSpace(local) ? Math.Max(45, rule.Confidence - 8) : rule.Confidence,
-                        Score = string.IsNullOrWhiteSpace(local) ? Math.Max(5, rule.Score - 8) : rule.Score
+                        Severity = adjustedRule.Severity,
+                        Confidence = string.IsNullOrWhiteSpace(local) ? Math.Max(45, adjustedRule.Confidence - 8) : adjustedRule.Confidence,
+                        Score = string.IsNullOrWhiteSpace(local) ? Math.Max(5, adjustedRule.Score - 8) : adjustedRule.Score
                     };
                     if (!IsKnownBenignBrowserDownloadMatch(match)) matches.Add(match);
                 }
@@ -1138,6 +1157,7 @@ namespace GamerIntegrity
                     if (++seen > MaxScannedFileSystemEntries || matches.Count >= MaxFileNameMatches) break;
                     string name = Path.GetFileName(entry);
                     var best = BestRuleMatch(name, rules);
+                    best = AdjustRuleForEvidenceContext(best, entry, "FileName");
                     if (best == null) continue;
                     if (IsLikelyBenignFileNameMatch(entry, best)) continue;
                     matches.Add(new FileNameMatch
@@ -1372,6 +1392,238 @@ namespace GamerIntegrity
             return sb.ToString();
         }
 
+        private static FileNameRule AdjustRuleForEvidenceContext(FileNameRule rule, string evidenceValue, string evidenceKind)
+        {
+            if (rule == null) return null;
+
+            string value = ScannerHelpers.ToLowerSafe(evidenceValue);
+            string token = ScannerHelpers.ToLowerSafe(rule.Token);
+            string label = NormalizeDetectionLabel(rule.Label);
+            bool isBrowser = evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource" || evidenceKind == "BrowserDownloadLocal";
+            bool isUsageTrace = evidenceKind == "ExecutionPrefetch" || evidenceKind == "ExecutionAmCache" || evidenceKind == "RuntimeProcess" || evidenceKind == "RuntimeService" || evidenceKind == "StartupRegistry" || evidenceKind == "ScheduledTask";
+            bool isLocalDownload = evidenceKind == "BrowserDownloadLocal";
+            bool hasStrongContext = ContainsStrongCheatContext(value);
+            bool broad = IsBroadWeakToken(token) || IsBroadRuleLabel(rule.Label);
+
+            if (IsKnownBenignContextMatch(value, token, evidenceKind, hasStrongContext, broad)) return null;
+
+            Severity severity = rule.Severity;
+            int confidence = rule.Confidence;
+            int score = rule.Score;
+
+            if (broad)
+            {
+                label = token == "" ? "Context-needed keyword hit" : (IsVeryBroadWeakToken(token) ? "Context-needed keyword hit" : "Weak keyword hit");
+                confidence = Math.Min(confidence, hasStrongContext ? 56 : 44);
+                score = Math.Min(score, hasStrongContext ? 8 : 3);
+                severity = Severity.Low;
+            }
+
+            if (IsContextSensitiveSingleWord(token) && !hasStrongContext)
+            {
+                if (isBrowser && !isLocalDownload) return null;
+                confidence = Math.Min(confidence, 50);
+                score = Math.Min(score, 6);
+                severity = Severity.Low;
+                label = "Context-needed keyword hit";
+            }
+
+            if (isBrowser && !hasStrongContext && IsShortOrRiskyToken(token))
+            {
+                return null;
+            }
+
+            if (isUsageTrace)
+            {
+                if (IsStrongUsageToken(token) || hasStrongContext)
+                {
+                    confidence = Math.Min(96, confidence + 8);
+                    score = Math.Min(90, score + (evidenceKind == "ExecutionPrefetch" ? 18 : 12));
+                    if (severity < Severity.High && IsStrongUsageToken(token)) severity = Severity.High;
+                    label = NormalizeUsageLabel(label, token);
+                }
+                else if (broad)
+                {
+                    confidence = Math.Min(confidence, 48);
+                    score = Math.Min(score, 4);
+                    severity = Severity.Low;
+                }
+            }
+
+            if (evidenceKind == "FileName" && IsHighTrustUserEvidencePath(value) && hasStrongContext)
+            {
+                confidence = Math.Min(95, confidence + 5);
+                score = Math.Min(90, score + 8);
+            }
+
+            if (isLocalDownload && hasStrongContext)
+            {
+                confidence = Math.Min(95, confidence + 5);
+                score = Math.Min(85, score + 8);
+                if (severity < Severity.Medium) severity = Severity.Medium;
+            }
+
+            return new FileNameRule
+            {
+                Token = rule.Token,
+                Category = rule.Category,
+                Label = label,
+                Severity = severity,
+                Confidence = ScannerHelpers.Clamp(confidence, 0, 100),
+                Score = Math.Max(0, score)
+            };
+        }
+
+        private static bool IsKnownBenignContextMatch(string value, string token, string evidenceKind, bool hasStrongContext, bool broad)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            if (IsNormalFrameworkOrVendorPath(value, token) && !hasStrongContext) return true;
+
+            if ((evidenceKind == "RuntimeService" || evidenceKind == "RuntimeProcess") && IsNormalWindowsOrVendorRuntime(value, token) && !hasStrongContext) return true;
+
+            if ((evidenceKind == "FileName" || evidenceKind == "BrowserDownloadLocal") && IsNormalFrameworkBinary(value, token) && !hasStrongContext) return true;
+
+            if (evidenceKind == "Installed")
+            {
+                if (value.Contains("microsoft .net host fx resolver") || value.Contains("microsoft .net host") || value.Contains("windows desktop runtime")) return true;
+                if (IsVeryBroadWeakToken(token) && !hasStrongContext) return true;
+            }
+
+            if ((evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource") && broad && !hasStrongContext) return true;
+
+            return false;
+        }
+
+        private static bool IsNormalFrameworkOrVendorPath(string value, string token)
+        {
+            if (value.Contains("\\gamerintegrity\\") && (value.Contains("\\bin\\release\\net") || value.Contains("\\bin\\debug\\net"))) return true;
+            if (value.Contains("\\program files\\dotnet\\") || value.Contains("\\program files (x86)\\dotnet\\")) return true;
+            if (value.Contains("microsoft .net host fx resolver")) return true;
+            if (value.Contains("system.runtime.loader.dll")) return true;
+            if (value.Contains("system.resources.") && value.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) return true;
+            if (value.Contains("system.xaml.resources.dll")) return true;
+            if (value.Contains("presentationframework.resources.dll") || value.Contains("presentationcore.resources.dll") || value.Contains("presentationui.resources.dll")) return true;
+            if (value.Contains("windowsbase.resources.dll") || value.Contains("reachframework.resources.dll")) return true;
+            if (value.Contains("uiautomationclient.dll") || value.Contains("uiautomationclient.resources.dll") || value.Contains("uiautomationprovider.resources.dll") || value.Contains("uiautomationtypes.resources.dll")) return true;
+            if (value.Contains("system.net.webclient.dll") || value.Contains("system.net.websockets.client.dll")) return true;
+            if (value.Contains("system.diagnostics.tracesource.dll") || value.Contains("system.diagnostics.diagnosticsource.dll")) return true;
+            if (value.Contains("vulkandriverquery.exe") || value.Contains("vulkandriverquery64.exe")) return true;
+            if (value.Contains("gameoverlayui.exe") || value.Contains("gameoverlayui64.exe")) return true;
+            if (value.Contains("\\windows\\system32\\driverstore\\") && (IsBroadWeakToken(token) || token == "driver" || token == "kernel" || token == "source")) return true;
+            if (value.Contains("\\windows\\system32\\drivers\\") && (IsBroadWeakToken(token) || token == "driver" || token == "kernel" || token == "source")) return true;
+            if (value.Contains("\\windows\\system32\\drivers\\wdf01000.sys") || value.Contains("\\windows\\system32\\drivers\\ehstortcgdrv.sys")) return true;
+            return false;
+        }
+
+        private static bool IsNormalFrameworkBinary(string value, string token)
+        {
+            string file = ScannerHelpers.ToLowerSafe(ScannerHelpers.GetFileNameOnly(value));
+            if (file.Length == 0) return false;
+            if (file.StartsWith("system.", StringComparison.OrdinalIgnoreCase) && file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) return true;
+            if (file.StartsWith("microsoft.", StringComparison.OrdinalIgnoreCase) && file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) return true;
+            if (file.StartsWith("presentation", StringComparison.OrdinalIgnoreCase) && file.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase)) return true;
+            if (file.StartsWith("uiautomation", StringComparison.OrdinalIgnoreCase) && file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) return true;
+            if (file.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase) && (token == "source" || token == "client dll" || token == "loader.dll" || token == "sdk")) return true;
+            return false;
+        }
+
+        private static bool IsNormalWindowsOrVendorRuntime(string value, string token)
+        {
+            if (value.Contains("hp omen hsa service") || value.Contains("hp network hsa service") || value.Contains("hp diagnostics hsa service") || value.Contains("hp app helper hsa service") || value.Contains("hp system info hsa service")) return true;
+            if (value.Contains("\\hpomencustomcapcomp.inf_") || value.Contains("\\hpcustomcapcomp.inf_")) return true;
+            if (value.Contains("\\omencap\\omencap.exe") || value.Contains("\\networkcap.exe") || value.Contains("\\apphelpercap.exe") || value.Contains("\\diagscap.exe") || value.Contains("\\sysinfocap.exe")) return true;
+            if (value.Contains("kernel mode driver frameworks service") || value.Contains("wdf01000.sys")) return true;
+            if (value.Contains("microsoft driver for storage devices") || value.Contains("ehstortcgdrv.sys")) return true;
+            if (value.Contains("\\windows\\system32\\driverstore\\") && (IsBroadWeakToken(token) || token == "driver" || token == "kernel" || token == "source")) return true;
+            if (value.Contains("\\windows\\system32\\drivers\\") && (IsBroadWeakToken(token) || token == "driver" || token == "kernel" || token == "source")) return true;
+            return false;
+        }
+
+        private static bool ContainsStrongCheatContext(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            string[] strongTokens =
+            {
+                "unknowncheats", "elitepvpers", "hackforums", "cheatforums", "only-cheats", "cosmocheats", "kernaim", "disconnectcheats", "lethality", "evicted", "vgc.wtf",
+                "aimbot", "triggerbot", "wallhack", "esp", "radar", "chams", "silent aim", "ragebot", "legitbot", "spinbot", "norecoil", "no recoil", "skin changer", "skinchanger",
+                "kdmapper", "driver mapper", "manual mapper", "manualmap", "extreme injector", "injector", "spoofer", "hwid", "vanguard bypass", "eac bypass", "battleye bypass",
+                "cheat loader", "private loader", "p2c loader", "loader auth", "keyauth loader", "cheat source", "cheat project", "cs2 cheat", "rust cheat", "valorant cheat", "fortnite cheat",
+                "cs2ext", "cs2-dumper", "client_dll", "offsets.json", "aimbot.h", "esp.h", "radar.h", "rcs.h", "loader.exe", "mapper.exe", "spoofer.exe"
+            };
+            foreach (string token in strongTokens)
+            {
+                if (token.Length <= 3)
+                {
+                    if (ScannerHelpers.RuleMatchesName(v, token)) return true;
+                }
+                else if (v.Contains(token)) return true;
+            }
+            return false;
+        }
+
+        private static bool IsHighTrustUserEvidencePath(string value)
+        {
+            return value.Contains("\\desktop\\") || value.Contains("\\downloads\\") || value.Contains("\\documents\\") || value.Contains("\\source\\") || value.Contains("\\repos\\") || value.Contains("\\projects\\") || value.Contains("\\x64\\release\\") || value.Contains("\\x64\\debug\\") || value.Contains(".sln") || value.Contains(".vcxproj") || value.Contains(".cpp") || value.Contains(".hpp") || value.Contains(".h") || value.Contains(".cs") || value.Contains(".sys") || value.Contains(".exe") || value.Contains(".dll");
+        }
+
+        private static bool IsStrongUsageToken(string token)
+        {
+            string[] tokens = { "kdmapper", "driver mapper", "manual mapper", "manualmap", "extreme injector", "injector", "cheat engine", "cheatengine", "wemod", "hwid spoofer", "spoofer", "trace cleaner", "loader.exe", "cheat loader", "private loader", "aimbot", "triggerbot", "wallhack", "esp", "radar", "silent aim", "vanguard bypass", "eac bypass", "battleye bypass" };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsShortOrRiskyToken(string token)
+        {
+            string[] tokens = { "esp", "rcs", "fov", "r0", "r3", "aa", "km", "um", "w2s", "rpm", "wpm", "auth", "panel", "menu", "driver", "source", "client", "private", "external", "internal", "sdk", "dump", "loader", "resolver" };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsContextSensitiveSingleWord(string token)
+        {
+            string[] tokens = { "source", "driver", "client", "resolver", "private", "internal", "external", "menu", "panel", "auth", "sdk", "dump", "dumper", "trace", "traces", "loader", "overlay", "kernel", "bypass" };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsBroadWeakToken(string token)
+        {
+            string[] tokens = { "cheat", "hack", "hacks", "trainer", "modmenu", "mod-menu", "executor", "exploit", "overlay", "paste", "crack", "offsets", "netvars", "signatures", "patternscan", "sigscan", "w2s", "rpm", "wpm", "r0", "r3", "eac", "battleye", "vanguard", "faceit", "ricochet", "vgk", "vgc", "dse", "patchguard", "unban", "spoof", "serials", "slotted", "external", "internal", "menu", "driver", "sdk", "dump", "dumper", "trace", "traces", "private", "invite", "auth", "panel", "source", "client dll", "resolver", "loader.dll" };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsVeryBroadWeakToken(string token)
+        {
+            string[] tokens = { "external", "internal", "menu", "driver", "sdk", "dump", "dumper", "trace", "traces", "private", "invite", "auth", "panel", "source", "client dll", "resolver", "loader.dll", "overlay" };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsBroadRuleLabel(string label)
+        {
+            string lower = ScannerHelpers.ToLowerSafe(label);
+            return lower.Contains("weak keyword") || lower.Contains("context-needed") || lower.Contains("broad single-word") || lower.Contains("very broad") || lower.Contains("possible tool keyword");
+        }
+
+        private static string NormalizeDetectionLabel(string label)
+        {
+            if (string.IsNullOrWhiteSpace(label)) return "Possible cheat-related term";
+            string lower = ScannerHelpers.ToLowerSafe(label);
+            if (lower.Contains("broad single-word") || lower.Contains("very broad")) return "Context-needed keyword hit";
+            if (lower.Contains("single-word")) return "Possible cheat-related term";
+            return label.Replace("cheat-adjacent", "context-needed");
+        }
+
+        private static string NormalizeUsageLabel(string label, string token)
+        {
+            string lower = ScannerHelpers.ToLowerSafe(label + " " + token);
+            if (lower.Contains("inject")) return "Injector launch trace";
+            if (lower.Contains("mapper") || lower.Contains("kdmapper") || lower.Contains("driver mapper")) return "Driver mapper launch trace";
+            if (lower.Contains("loader")) return "Cheat loader launch trace";
+            if (lower.Contains("spoofer") || lower.Contains("hwid")) return "Spoofer launch trace";
+            if (lower.Contains("bypass")) return "Anti-cheat bypass launch trace";
+            if (lower.Contains("aimbot") || lower.Contains("triggerbot") || lower.Contains("esp") || lower.Contains("radar")) return "Cheat feature launch trace";
+            return label;
+        }
+
         private static FileNameRule BestRuleMatch(string value, List<FileNameRule> rules)
         {
             FileNameRule best = null;
@@ -1404,7 +1656,7 @@ namespace GamerIntegrity
                 {
                     int length = (int)Math.Min(fs.Length, maxBytes);
                     bytes = new byte[length];
-                    fs.Read(bytes, 0, length);
+                    fs.ReadExactly(bytes, 0, length);
                 }
                 var ascii = new StringBuilder(bytes.Length);
                 foreach (byte b in bytes) ascii.Append(b >= 32 && b <= 126 ? (char)b : ' ');

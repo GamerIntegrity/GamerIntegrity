@@ -16,8 +16,8 @@ namespace GamerIntegrity
 {
     public static class ScannerHelpers
     {
-        public const string ReleaseVersion = "v1.1-production-csharp";
-        public const string EvidenceModelVersion = "evidence-v1.1";
+        public const string ReleaseVersion = "v1.0.1";
+        public const string EvidenceModelVersion = "evidence-v1.0.1";
 
         public static int Clamp(int value, int low, int high)
         {

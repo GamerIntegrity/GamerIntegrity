@@ -34,18 +34,18 @@ namespace GamerIntegrity
             double adjustedTotal = assessment.Categories.Sum(c => c.AdjustedPoints);
             assessment.NormalizedScore = ScannerHelpers.Clamp((int)Math.Round(100.0 * (1.0 - Math.Exp(-adjustedTotal / 150.0))), 0, 100);
             assessment.ReportConfidence = positive.Count == 0 ? 55 : ScannerHelpers.Clamp((int)Math.Round(positive.Average(f => f.Confidence) + Math.Min(20, positive.Count * 1.5)), 0, 100);
-            if (assessment.NormalizedScore >= 85) assessment.ConcernLevel = "Critical concern";
-            else if (assessment.NormalizedScore >= 65) assessment.ConcernLevel = "High concern";
-            else if (assessment.NormalizedScore >= 35) assessment.ConcernLevel = "Medium concern";
-            else if (assessment.NormalizedScore >= 12) assessment.ConcernLevel = "Low concern";
-            else assessment.ConcernLevel = "No strong concern";
+            if (assessment.NormalizedScore >= 85) assessment.ConcernLevel = "Critical";
+            else if (assessment.NormalizedScore >= 65) assessment.ConcernLevel = "High";
+            else if (assessment.NormalizedScore >= 35) assessment.ConcernLevel = "Medium";
+            else if (assessment.NormalizedScore >= 12) assessment.ConcernLevel = "Low";
+            else assessment.ConcernLevel = "Clean";
 
             assessment.Categories.Sort((a, b) => b.AdjustedPoints.CompareTo(a.AdjustedPoints));
             foreach (var c in assessment.Categories.Take(6))
                 assessment.TopFactors.Add(ScannerHelpers.ReportCategoryLabel(c.Category) + ": " + c.StrongestFinding + " (" + Math.Round(c.AdjustedPoints, 1).ToString(CultureInfo.InvariantCulture) + " pts)");
             assessment.Rationale = positive.Count == 0
                 ? "Only informational findings were recorded. No local indicator category contributed positive evidence points."
-                : "Score is calibrated from positive local evidence categories with caps to avoid one noisy source overwhelming the report.";
+                : "Score is calibrated from positive local evidence categories. Launch, download, and startup traces are weighted above broad filename hits so one noisy source cannot overwhelm the report.";
             return assessment;
         }
 
@@ -65,12 +65,12 @@ namespace GamerIntegrity
         {
             switch (category)
             {
-                case "Source Projects": return 95;
-                case "Execution Evidence": return 90;
-                case "Browser Source/Download Evidence": return 85;
-                case "File Name Scan": return 75;
+                case "Execution Evidence": return 105;
+                case "Browser Source/Download Evidence": return 95;
+                case "Runtime/Startup": return 90;
+                case "Source Projects": return 85;
                 case "Browser History": return 70;
-                case "Runtime/Startup": return 70;
+                case "File Name Scan": return 55;
                 case "Installed Programs": return 55;
                 case "Drivers": return 55;
                 case "Boot Security": return 45;
