@@ -7,15 +7,9 @@ It gives you an in-app scan flow, clean result pages, redacted sharing, non-reda
 
 ## Preview
 
-> Will be updated soon.
-
-```md
-![GamerIntegrity Scan Page](assets/preview-scan.png)
-
-![GamerIntegrity Results Page](assets/preview-results.png)
-
-![GamerIntegrity Detections](assets/preview-detections.png)
-```
+> ![GamerIntegrity Scan Page](assets/preview-scan.png)
+> ![GamerIntegrity Results Page](assets/preview-results.png)
+> ![GamerIntegrity Detections](assets/preview-detections.png)
 
 ## What GamerIntegrity Does
 
