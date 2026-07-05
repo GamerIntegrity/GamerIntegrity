@@ -217,6 +217,21 @@
         <Setter Property="BorderBrush" Value="#E7C678" />
     </Style>
 
+    <Style x:Key="ScanStatus.Card" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Brush.Paper}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.AccentLine}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="18" />
+        <Setter Property="Margin" Value="0,0,0,14" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="1" Opacity="0.08" Color="#1E2430" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+
     <Style x:Key="Modal.Card" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource Brush.Paper}" />
         <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />

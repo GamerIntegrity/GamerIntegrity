@@ -16,8 +16,8 @@ namespace GamerIntegrity
 {
     public static class ScannerHelpers
     {
-        public const string ReleaseVersion = "v1.0.1";
-        public const string EvidenceModelVersion = "evidence-v1.0.1";
+        public const string ReleaseVersion = "v1.0.2";
+        public const string EvidenceModelVersion = "evidence-v1.0.2";
 
         public static int Clamp(int value, int low, int high)
         {
@@ -513,7 +513,8 @@ namespace GamerIntegrity
                 case "Installed Programs": return "Installed programs and tools";
                 case "Execution Evidence": return "Execution evidence";
                 case "Browser Source/Download Evidence": return "Browser source/download evidence";
-                case "Runtime/Startup": return "Running processes, services, drivers, and startup";
+                case "Runtime/Startup": return "Launch, startup, and retained usage traces";
+                case "Cleanup Indicators": return "Possible cleanup / missing-trace indicators";
                 case "Source Projects": return "Cheat software/source/build evidence";
                 case "Boot Security": return "Windows boot security";
                 case "Security Center": return "Windows Security Center";

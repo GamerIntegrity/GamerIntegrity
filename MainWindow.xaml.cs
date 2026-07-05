@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Input;
@@ -30,6 +31,7 @@ namespace GamerIntegrity
         private string _redactedJsonReportPath;
         private ScanResult _lastScanResult;
         private bool _sidebarShown;
+        private string _lastDisplayedProgressStage = string.Empty;
 
         public MainWindow()
         {
@@ -112,9 +114,14 @@ namespace GamerIntegrity
             ReportChoicePanel.Visibility = Visibility.Collapsed;
             ResultsSection.Visibility = Visibility.Collapsed;
             ResultsSection.Opacity = 0;
+            ScanProgressBar.BeginAnimation(RangeBase.ValueProperty, null);
             ScanProgressBar.Value = 0;
             ProgressPercentText.Text = "0%";
+            ProgressCategoryText.Text = "Offline scan starting";
             ProgressStageText.Text = "Getting scan ready...";
+            ProgressSubText.Text = "GamerIntegrity is preparing an offline-only check. Nothing is uploaded.";
+            ProgressTipText.Text = "Do not close this window";
+            _lastDisplayedProgressStage = string.Empty;
 
             _workspace.Reset();
             ArticleScroll.ScrollToTop();
@@ -124,14 +131,130 @@ namespace GamerIntegrity
         private void UpdateProgress(int percent, string stage)
         {
             int safePercent = Math.Max(0, Math.Min(100, percent));
-            ScanProgressBar.Value = safePercent;
+            AnimateProgressTo(safePercent);
             ProgressPercentText.Text = safePercent.ToString(CultureInfo.InvariantCulture) + "%";
 
-            if (!string.IsNullOrWhiteSpace(stage))
+            var status = BuildScanStatus(safePercent, stage);
+            ProgressCategoryText.Text = status.Category;
+            ProgressStageText.Text = status.Title;
+            ProgressSubText.Text = status.Detail;
+            ProgressTipText.Text = status.Tip;
+
+            if (!string.IsNullOrWhiteSpace(status.LogMessage) && !string.Equals(_lastDisplayedProgressStage, status.LogMessage, StringComparison.Ordinal))
             {
-                ProgressStageText.Text = stage;
-                AppendLog(stage);
+                _lastDisplayedProgressStage = status.LogMessage;
+                AppendLog(status.LogMessage);
             }
+        }
+
+        private void AnimateProgressTo(int percent)
+        {
+            double currentValue = ScanProgressBar.Value;
+            ScanProgressBar.BeginAnimation(RangeBase.ValueProperty, null);
+
+            if (Math.Abs(currentValue - percent) < 0.1)
+            {
+                ScanProgressBar.Value = percent;
+                return;
+            }
+
+            var animation = new DoubleAnimation(currentValue, percent, TimeSpan.FromMilliseconds(460))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                FillBehavior = FillBehavior.Stop
+            };
+            animation.Completed += delegate { ScanProgressBar.Value = percent; };
+            ScanProgressBar.BeginAnimation(RangeBase.ValueProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        }
+
+        private ScanStatusText BuildScanStatus(int percent, string rawStage)
+        {
+            string stage = (rawStage ?? string.Empty).Trim();
+            string lower = stage.ToLowerInvariant();
+            string countText = ExtractCountText(stage);
+
+            if (percent >= 100)
+            {
+                return new ScanStatusText("Scan complete", "Scan complete", "Choose Redacted for sharing or Non-Redacted for the full local view.", "Ready to review", "Scan complete. Choose a report view.");
+            }
+            if (lower.Contains("getting") || lower.Contains("starting") || percent < 8)
+            {
+                return new ScanStatusText("Offline scan starting", "Getting the scan ready", "Preparing folders, permissions, and offline report memory. Nothing is uploaded.", "Offline only", "Getting the scan ready...");
+            }
+            if (lower.Contains("windows") || lower.Contains("compatibility"))
+            {
+                return new ScanStatusText("System check", "Checking Windows and admin access", "Confirming the scan can read the Windows areas needed for a complete local report.", "System details", stage);
+            }
+            if (lower.Contains("network") || lower.Contains("display"))
+            {
+                return new ScanStatusText("System inventory", "Reading hardware basics", "Capturing display and network inventory so the report has useful PC context.", "Inventory", stage);
+            }
+            if (lower.Contains("security center") || lower.Contains("antivirus"))
+            {
+                return new ScanStatusText("Security check", "Checking Windows Security status", "Reading local antivirus/security state. This helps explain what protection was visible during the scan.", "Windows Security", stage);
+            }
+            if (lower.Contains("secure boot") || lower.Contains("tpm") || lower.Contains("bcd") || lower.Contains("boot security") || lower.Contains("driver-blocklist"))
+            {
+                return new ScanStatusText("Boot security", "Checking boot and driver safety settings", "Looking at Secure Boot, TPM, kernel settings, and vulnerable-driver protections.", "Boot checks", stage);
+            }
+            if (lower.Contains("installed program") || lower.Contains("installed tool"))
+            {
+                return new ScanStatusText("Installed tools", "Checking installed tools", "Looking for installed cheat tools, injectors, debuggers, decompilers, and process-inspection apps." + countText, "Programs", stage);
+            }
+            if (lower.Contains("amcache") || lower.Contains("prefetch") || lower.Contains("execution") || lower.Contains("launch trace"))
+            {
+                return new ScanStatusText("Launch evidence", "Checking launch traces", "Looking for signs that suspicious tools were opened, not just downloaded." + countText, "High value", stage);
+            }
+            if (lower.Contains("running") || lower.Contains("startup") || lower.Contains("runtime") || lower.Contains("scheduled") || lower.Contains("service"))
+            {
+                return new ScanStatusText("Usage traces", "Checking startup and recent app activity", "Reviewing processes, services, tasks, startup entries, and retained usage traces." + countText, "Usage history", stage);
+            }
+            if (lower.Contains("driver"))
+            {
+                return new ScanStatusText("Driver review", "Checking driver inventory", "Reading local driver/service records and signatures so suspicious driver context can stand out." + countText, "Drivers", stage);
+            }
+            if (lower.Contains("hardware") || lower.Contains("bios") || lower.Contains("disk") || lower.Contains("identity"))
+            {
+                return new ScanStatusText("Hardware identity", "Capturing hardware identity records", "Collecting local board, BIOS, disk, and network-adapter identifiers for review context." + countText, "Hardware", stage);
+            }
+            if (lower.Contains("usb") || lower.Contains("external-device") || lower.Contains("external device"))
+            {
+                return new ScanStatusText("External devices", "Checking USB device history", "Reviewing local USB and USB-storage connection records." + countText, "Devices", stage);
+            }
+            if (lower.Contains("browser"))
+            {
+                return new ScanStatusText("Browser evidence", "Checking local browser history and downloads", "Looking for cheat-provider domains, source/download records, and related search/download traces." + countText, "Browser", stage);
+            }
+            if (lower.Contains("file/folder") || lower.Contains("file name") || lower.Contains("folders"))
+            {
+                return new ScanStatusText("Files and folders", "Checking common user folders", "Scanning Desktop, Downloads, Documents, repos, and project folders for cheat/source/build names." + countText, "Files", stage);
+            }
+            if (lower.Contains("grouping") || lower.Contains("timeline"))
+            {
+                return new ScanStatusText("Report building", "Grouping evidence into readable sections", "Combining related hits so staff can review projects, launches, downloads, and browser evidence more clearly.", "Organizing", stage);
+            }
+            if (lower.Contains("preparing") || lower.Contains("report"))
+            {
+                return new ScanStatusText("Report building", "Preparing the in-app report", "Building the local report view and redacted/non-redacted options.", "Almost done", stage);
+            }
+
+            return new ScanStatusText("Offline scan running", string.IsNullOrWhiteSpace(stage) ? "Scanning local PC traces" : stage, "GamerIntegrity is checking local Windows, browser, device, and file traces.", "Offline only", stage);
+        }
+
+        private static string ExtractCountText(string stage)
+        {
+            if (string.IsNullOrWhiteSpace(stage))
+                return string.Empty;
+
+            int colon = stage.IndexOf(':');
+            if (colon >= 0 && colon + 1 < stage.Length)
+            {
+                string tail = stage.Substring(colon + 1).Trim();
+                if (!string.IsNullOrWhiteSpace(tail))
+                    return " Current result: " + tail;
+            }
+
+            return string.Empty;
         }
 
         private void FinishScan(ScanResult result)
@@ -157,18 +280,21 @@ namespace GamerIntegrity
 
             if (result.ExitCode == 0)
             {
-                ScanProgressBar.Value = 100;
-                ProgressPercentText.Text = "100%";
-                ProgressStageText.Text = "Scan complete. Choose Redacted or Non-Redacted to view results.";
+                UpdateProgress(100, "Scan complete. Choose Redacted or Non-Redacted to view results.");
                 ReportChoicePanel.Visibility = Visibility.Visible;
                 ActivitySection.Visibility = Visibility.Collapsed;
                 AppendLog("Scan complete. Waiting for Redacted or Non-Redacted view choice.");
                 return;
             }
 
+            ProgressCategoryText.Text = result.ExitCode == 2 ? "Report issue" : "Scan failed";
             ProgressStageText.Text = result.ExitCode == 2
                 ? "Scan finished, but results could not be prepared."
                 : "Scan failed.";
+            ProgressSubText.Text = result.ExitCode == 2
+                ? "The scanner finished, but the in-app report could not be prepared. Try running as administrator and check Windows security blocks."
+                : "The scan stopped before a report could be completed. Try running as administrator and check whether Windows security blocked access.";
+            ProgressTipText.Text = "Review the message";
 
             if (result.ExitCode == 2)
             {
@@ -1166,6 +1292,24 @@ namespace GamerIntegrity
 
             return string.Join(" | ", output);
         }
+    }
+
+    public sealed class ScanStatusText
+    {
+        public ScanStatusText(string category, string title, string detail, string tip, string logMessage)
+        {
+            Category = category;
+            Title = title;
+            Detail = detail;
+            Tip = tip;
+            LogMessage = logMessage;
+        }
+
+        public string Category { get; }
+        public string Title { get; }
+        public string Detail { get; }
+        public string Tip { get; }
+        public string LogMessage { get; }
     }
 
     public sealed class ReportWorkspaceViewModel : NotifyBase

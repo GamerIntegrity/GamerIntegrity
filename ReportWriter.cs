@@ -45,7 +45,7 @@ namespace GamerIntegrity
                 assessment.TopFactors.Add(ScannerHelpers.ReportCategoryLabel(c.Category) + ": " + c.StrongestFinding + " (" + Math.Round(c.AdjustedPoints, 1).ToString(CultureInfo.InvariantCulture) + " pts)");
             assessment.Rationale = positive.Count == 0
                 ? "Only informational findings were recorded. No local indicator category contributed positive evidence points."
-                : "Score is calibrated from positive local evidence categories. Launch, download, and startup traces are weighted above broad filename hits so one noisy source cannot overwhelm the report.";
+                : "Score is calibrated from positive local evidence categories. Direct launches, downloads, and startup traces are weighted above broad filename or history-only hits so one noisy source cannot overwhelm the report.";
             return assessment;
         }
 
@@ -68,11 +68,12 @@ namespace GamerIntegrity
                 case "Execution Evidence": return 105;
                 case "Browser Source/Download Evidence": return 95;
                 case "Runtime/Startup": return 90;
-                case "Source Projects": return 85;
+                case "Source Projects": return 80;
                 case "Browser History": return 70;
-                case "File Name Scan": return 55;
+                case "File Name Scan": return 45;
                 case "Installed Programs": return 55;
                 case "Drivers": return 55;
+                case "Cleanup Indicators": return 18;
                 case "Boot Security": return 45;
                 case "Hardware Identity": return 40;
                 default: return 30;
@@ -93,7 +94,7 @@ namespace GamerIntegrity
                 verdict.Level = "critical";
                 verdict.Summary = "Multiple high-value local evidence categories matched cheat, mapper, injector, spoofer, source, or build indicators.";
                 verdict.Basis = "Source/build groups: " + sourceProjects.Count + ", execution traces: " + executionArtifacts.Count + ", browser source/download records: " + browserDownloadMatches.Count + ", runtime/startup artifacts: " + runtimeArtifacts.Count + ".";
-                verdict.Recommendation = "Check projects, launch traces, downloads, and startup artifacts first.";
+                verdict.Recommendation = "Check projects, direct launches/recent-app activity, downloads, and startup artifacts first.";
             }
             else if (assessment.NormalizedScore >= 65)
             {
@@ -149,6 +150,7 @@ namespace GamerIntegrity
                 var assessment = CalculateScoreAssessment(report);
                 var verdict = BuildVerdict(report, assessment, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
                 var r = new Redactor(integrity, redacted);
+                var installedForReport = BuildUniqueInstalledProgramMatches(installedProgramMatches);
                 var sb = new StringBuilder(1024 * 256);
                 sb.AppendLine("{");
                 Prop(sb, 1, "tool", "GamerIntegrity", true);
@@ -182,7 +184,7 @@ namespace GamerIntegrity
                 sb.Append(Indent(1)).AppendLine("},");
 
                 WriteFindingsJson(sb, report.Findings, r, true);
-                WriteFileMatchesJson(sb, "installedProgramMatches", installedProgramMatches, r, true);
+                WriteFileMatchesJson(sb, "installedProgramMatches", installedForReport, r, true);
                 WriteFileMatchesJson(sb, "fileNameMatches", fileMatches, r, true);
                 WriteBrowserMatchesJson(sb, browserMatches, r, true);
                 WriteBrowserSourcesJson(sb, browserHistorySources, r, true);
@@ -219,6 +221,7 @@ namespace GamerIntegrity
                 var assessment = CalculateScoreAssessment(report);
                 var verdict = BuildVerdict(report, assessment, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
                 var r = new Redactor(integrity, redacted);
+                var installedForReport = BuildUniqueInstalledProgramMatches(installedProgramMatches);
                 var ordered = report.Findings
                     .OrderByDescending(f => f.Score)
                     .ThenByDescending(f => f.Severity)
@@ -231,7 +234,7 @@ namespace GamerIntegrity
                 int mediumCount = GetSeverityCount(severityCounts, Severity.Medium);
                 int nonWindowsDrivers = drivers.Count(d => !d.WindowsSystemPath);
                 int untrustedNonWindowsDrivers = drivers.Count(d => !d.WindowsSystemPath && d.FileExists && !d.SignedTrusted);
-                string summaryText = BuildSummaryText(report, installedProgramMatches, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
+                string summaryText = BuildSummaryText(report, installedForReport, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
                 var caseSummaryItems = BuildCaseSummaryItems(fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
 
                 var sb = new StringBuilder(1024 * 768);
@@ -294,11 +297,11 @@ namespace GamerIntegrity
                 WriteExecutionHtml(sb, executionArtifacts, r);
                 WriteBrowserDownloadsHtml(sb, browserDownloadMatches, r);
                 WriteRuntimeHtml(sb, runtimeArtifacts, r);
-                WriteInstalledProgramsHtml(sb, installedProgramMatches, r);
+                WriteInstalledProgramsHtml(sb, installedForReport, r);
                 WriteBrowserHtml(sb, browserMatches, browserHistorySources, r);
                 WriteFileMatchesHtml(sb, fileMatches, r);
 
-                sb.AppendLine("<div class=\"footer\">Generated by GamerIntegrity v1. Keep the JSON report and integrity manifest with this HTML report when you need machine-readable scan data.</div>");
+                sb.AppendLine("<div class=\"footer\">Generated by GamerIntegrity " + ScannerHelpers.ReleaseVersion + ". Keep the JSON report and integrity manifest with this HTML report when you need machine-readable scan data.</div>");
                 sb.AppendLine(SearchScript());
                 sb.AppendLine("</main></div></div></body></html>");
 
@@ -399,6 +402,8 @@ namespace GamerIntegrity
                 Prop(sb, 3, "historyPath", r.Path(m.HistoryPath), true);
                 Prop(sb, 3, "token", m.Token, true);
                 Prop(sb, 3, "label", m.Label, true);
+                Prop(sb, 3, "displayUrl", BrowserDisplayUrl(r.Text(m.Snippet)), true);
+                Prop(sb, 3, "displayTitle", BrowserDisplayTitle(r.Text(m.Snippet), BrowserDisplayUrl(r.Text(m.Snippet)), m.Token), true);
                 Prop(sb, 3, "snippet", r.Text(m.Snippet), true);
                 Prop(sb, 3, "severity", m.Severity.ToString(), true);
                 Prop(sb, 3, "confidence", m.Confidence, true);
@@ -454,6 +459,8 @@ namespace GamerIntegrity
                 Prop(sb, 3, "token", m.Token, true);
                 Prop(sb, 3, "label", m.Label, true);
                 Prop(sb, 3, "url", r.Text(m.Url), true);
+                Prop(sb, 3, "displayUrl", BrowserDisplayUrl(string.IsNullOrWhiteSpace(m.Url) ? r.Text(m.Snippet) : r.Text(m.Url)), true);
+                Prop(sb, 3, "displayTitle", BrowserDisplayTitle(r.Text(m.Snippet), BrowserDisplayUrl(string.IsNullOrWhiteSpace(m.Url) ? r.Text(m.Snippet) : r.Text(m.Url)), m.Token), true);
                 Prop(sb, 3, "domain", m.Domain, true);
                 Prop(sb, 3, "localPath", r.Path(m.LocalPath), true);
                 Prop(sb, 3, "evidenceType", m.EvidenceType, true);
@@ -895,19 +902,22 @@ namespace GamerIntegrity
 
         private static void AppendBrowserEvidenceRow(StringBuilder sb, BrowserDownloadMatch m, Redactor r, bool download)
         {
-            string clean = Shorten(ScannerHelpers.CollapseWhitespaceForDisplay(r.Text(m.Snippet)), download ? 220 : 240);
+            string clean = ScannerHelpers.CollapseWhitespaceForDisplay(r.Text(m.Snippet));
+            string displayUrl = BrowserDisplayUrl(string.IsNullOrWhiteSpace(m.Url) ? clean : r.Text(m.Url));
+            string displayTitle = BrowserDisplayTitle(clean, displayUrl, m.Token);
+            string domain = string.IsNullOrWhiteSpace(m.Domain) ? DomainFromUrlLoose(displayUrl) : m.Domain;
+
             sb.Append("<tr class=\"search-item\"><td>");
             AppendSeverityBadge(sb, m.Severity);
-            sb.Append("</td><td>").Append(H(m.Browser)).Append("<br><span class=\"small\">").Append(H(m.Profile)).Append("</span></td><td>").Append(H(m.Token)).Append("<br><span class=\"small\">").Append(H(m.Label)).Append("</span></td><td><div class=\"finding-title\">").Append(H(BrowserEvidenceLabel(m))).Append("</div>");
+            sb.Append("</td><td>").Append(H(m.Browser)).Append("<br><span class=\"small\">").Append(H(m.Profile)).Append("</span></td><td>").Append(H(m.Token)).Append("<br><span class=\"small\">").Append(H(m.Label)).Append("</span></td><td>");
+            if (!string.IsNullOrWhiteSpace(displayTitle)) sb.Append("<div class=\"finding-title\">").Append(H(displayTitle)).Append("</div>");
+            else sb.Append("<div class=\"finding-title\">").Append(H(BrowserEvidenceLabel(m))).Append("</div>");
             if (!string.IsNullOrWhiteSpace(m.When)) sb.Append("<div class=\"small\">Artifact time: ").Append(H(ScannerHelpers.FriendlyTimestampText(m.When))).Append("</div>");
             else if (!string.IsNullOrWhiteSpace(m.TimeType)) sb.Append("<div class=\"small\">Time basis: ").Append(H(m.TimeType)).Append("</div>");
-            if (!string.IsNullOrWhiteSpace(m.Domain)) sb.Append("<div>Domain: ").Append(H(m.Domain)).Append("</div>");
-            if (!string.IsNullOrWhiteSpace(m.Url)) sb.Append("<div class=\"mono small\">").Append(download ? "Source URL: " : "URL: ").Append(H(r.Text(m.Url))).Append("</div>");
+            if (!string.IsNullOrWhiteSpace(domain)) sb.Append("<div>Domain: ").Append(H(domain)).Append("</div>");
+            if (!string.IsNullOrWhiteSpace(displayUrl)) sb.Append("<div class=\"mono small\">").Append(download ? "Source URL: " : "URL: ").Append(H(displayUrl)).Append("</div>");
             if (download && !string.IsNullOrWhiteSpace(m.LocalPath)) sb.Append("<div class=\"mono small\">Local path: ").Append(H(r.Path(m.LocalPath))).Append("</div>");
-            if (download)
-                sb.Append("<details><summary>Matched browser text</summary><div class=\"finding-details\">").Append(H(clean)).Append("</div><div class=\"mono small\">").Append(H(r.Path(m.HistoryPath))).Append("</div></details>");
-            else
-                sb.Append("<div class=\"finding-details\">").Append(H(clean)).Append("</div><details><summary>History database</summary><div class=\"mono small\">").Append(H(r.Path(m.HistoryPath))).Append("</div></details>");
+            sb.Append("<details><summary>Raw matched context</summary><div class=\"finding-details\">").Append(H(Shorten(clean, 380))).Append("</div><div class=\"mono small\">").Append(H(r.Path(m.HistoryPath))).Append("</div></details>");
             sb.Append("</td><td>").Append(m.Confidence).AppendLine("%</td></tr>");
         }
 
@@ -956,7 +966,7 @@ namespace GamerIntegrity
         private static void WriteBrowserHtml(StringBuilder sb, List<BrowserHistoryMatch> matches, List<BrowserHistorySource> sources, Redactor r)
         {
             sb.AppendLine("<section id=\"browser-keywords\" class=\"wiki-section\"><details><summary>Browser/domain keyword detections</summary>");
-            sb.AppendLine("<p class=\"small\">This lists supported browser history stores and the cleaned keyword-hit records that matched cheat/tooling terms.</p>");
+            sb.AppendLine("<p class=\"small\">This lists supported browser history stores and cleaned keyword-hit records. Raw browser database context is kept behind the expandable row detail.</p>");
             sb.AppendLine("<table><thead><tr><th>Browser</th><th>Profile</th><th>Local history database</th></tr></thead><tbody>");
             if (sources.Count == 0) AppendEmptyRow(sb, 3, "No supported browser history stores were detected.");
             else foreach (var src in sources) sb.Append("<tr class=\"search-item\"><td>").Append(H(src.Browser)).Append("</td><td>").Append(H(src.Profile)).Append("</td><td class=\"mono\">").Append(H(r.Path(src.HistoryPath))).AppendLine("</td></tr>");
@@ -971,14 +981,18 @@ namespace GamerIntegrity
                 foreach (var m in matches)
                 {
                     string cleanSnippet = ScannerHelpers.CollapseWhitespaceForDisplay(r.Text(m.Snippet));
-                    string url = ExtractFirstUrl(cleanSnippet);
+                    string url = BrowserDisplayUrl(cleanSnippet);
                     string domain = DomainFromUrlLoose(url);
+                    string title = BrowserDisplayTitle(cleanSnippet, url, m.Token);
                     sb.Append("<tr class=\"search-item\"><td>");
                     AppendSeverityBadge(sb, m.Severity);
                     sb.Append("</td><td>").Append(H(m.Browser)).Append("<br><span class=\"small\">").Append(H(m.Profile)).Append("</span></td><td>").Append(H(m.Token)).Append("<br><span class=\"small\">").Append(H(m.Label)).Append("</span></td><td>");
-                    if (!string.IsNullOrWhiteSpace(domain)) sb.Append("<div class=\"finding-title\">").Append(H(domain)).Append("</div>");
+                    if (!string.IsNullOrWhiteSpace(title)) sb.Append("<div class=\"finding-title\">").Append(H(title)).Append("</div>");
+                    else if (!string.IsNullOrWhiteSpace(domain)) sb.Append("<div class=\"finding-title\">").Append(H(domain)).Append("</div>");
+                    else sb.Append("<div class=\"finding-title\">Matched browser history text</div>");
+                    if (!string.IsNullOrWhiteSpace(domain)) sb.Append("<div>Domain: ").Append(H(domain)).Append("</div>");
                     if (!string.IsNullOrWhiteSpace(url)) sb.Append("<div class=\"mono small\">").Append(H(url)).Append("</div>");
-                    sb.Append("<div class=\"finding-details\">").Append(H(cleanSnippet)).Append("</div><details><summary>History database</summary><div class=\"mono small\">").Append(H(r.Path(m.HistoryPath))).Append("</div></details></td><td>").Append(m.Confidence).AppendLine("%</td></tr>");
+                    sb.Append("<details><summary>Raw matched context</summary><div class=\"finding-details\">").Append(H(Shorten(cleanSnippet, 380))).Append("</div><div class=\"mono small\">").Append(H(r.Path(m.HistoryPath))).Append("</div></details></td><td>").Append(m.Confidence).AppendLine("%</td></tr>");
                 }
             }
             sb.AppendLine("</tbody></table></details></section>");
@@ -1046,6 +1060,49 @@ namespace GamerIntegrity
             public List<string> SampleEvidence = new List<string>();
         }
 
+        private static List<FileNameMatch> BuildUniqueInstalledProgramMatches(List<FileNameMatch> matches)
+        {
+            var result = new List<FileNameMatch>();
+            var groups = (matches ?? new List<FileNameMatch>()).GroupBy(m => InstalledProgramDisplayKey(m.Path), StringComparer.OrdinalIgnoreCase);
+            foreach (var group in groups)
+            {
+                var best = group.OrderByDescending(m => m.Score).ThenByDescending(m => m.Confidence).ThenByDescending(m => m.Severity).First();
+                var clone = new FileNameMatch
+                {
+                    Path = best.Path,
+                    Token = best.Token,
+                    Category = best.Category,
+                    Label = best.Label,
+                    Severity = best.Severity,
+                    Confidence = best.Confidence,
+                    Score = best.Score,
+                    LastWriteTime = best.LastWriteTime
+                };
+                int count = group.Count();
+                if (count > 1 && clone.Path.IndexOf("seen in", StringComparison.OrdinalIgnoreCase) < 0)
+                    clone.Path = clone.Path + " (seen in " + count.ToString(CultureInfo.InvariantCulture) + " uninstall entries)";
+                result.Add(clone);
+            }
+            return result.OrderByDescending(m => m.Score).ThenByDescending(m => m.Confidence).ThenByDescending(m => m.Severity).ThenBy(m => m.Path).ToList();
+        }
+
+        private static int UniqueInstalledProgramCount(List<FileNameMatch> matches)
+        {
+            return (matches ?? new List<FileNameMatch>()).Select(m => InstalledProgramDisplayKey(m.Path)).Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        }
+
+        private static string InstalledProgramDisplayKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "";
+            string name = value;
+            int pipe = name.IndexOf(" | ", StringComparison.Ordinal);
+            if (pipe >= 0) name = name.Substring(0, pipe);
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"\s*\(remove only\)\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"\s*\(seen in \d+ uninstall entries\)\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+", " ").Trim().ToLowerInvariant();
+            return name;
+        }
+
         private static List<string> BuildCaseSummaryItems(List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects)
         {
             int directSource = fileMatches.Count(IsDirectCheatSourceMatch);
@@ -1099,10 +1156,11 @@ namespace GamerIntegrity
             if (downloadPaths > 0) parts.Add(downloadPaths + " browser download/local-path records");
             if (sourceLeads > 0) parts.Add(sourceLeads + " browser source/history leads");
             if (strongBrowser > 0) parts.Add(strongBrowser + " strong cheat-domain/search history detections");
-            if (installedProgramMatches.Count > 0) parts.Add(installedProgramMatches.Count + " installed cheat/decompilation tools");
-            if (runtimeArtifacts.Count > 0) parts.Add(runtimeArtifacts.Count + " running/startup/service artifacts");
+            int uniqueInstalled = UniqueInstalledProgramCount(installedProgramMatches);
+            if (uniqueInstalled > 0) parts.Add(uniqueInstalled + " unique installed cheat/decompilation tools");
+            if (runtimeArtifacts.Count > 0) parts.Add(runtimeArtifacts.Count + " launch/startup/retained-history artifacts");
             string core = parts.Count == 0 ? "no direct cheat/tooling evidence in the enabled evidence categories" : string.Join(", ", parts);
-            return "This PC shows " + core + ". Check downloads, launch traces, grouped projects, browser source/download hits, and installed/running tools before lower-signal posture findings.";
+            return "This PC shows " + core + ". Check direct launches/recent-app activity, downloads, grouped projects, browser source/download hits, and installed/running tools before lower-signal history-only findings.";
         }
 
         private static List<FileEvidenceGroup> BuildFileEvidenceGroups(List<FileNameMatch> matches, Redactor r)
@@ -1221,6 +1279,34 @@ namespace GamerIntegrity
             if (!string.IsNullOrWhiteSpace(m.LocalPath)) return m.LocalPath;
             if (!string.IsNullOrWhiteSpace(m.Url)) return m.Url;
             return Shorten(ScannerHelpers.CollapseWhitespaceForDisplay(m.Snippet), 220);
+        }
+
+        private static string BrowserDisplayUrl(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "";
+            string clean = ScannerHelpers.CollapseWhitespaceForDisplay(value);
+            string extracted = ExtractFirstUrl(clean);
+            if (!string.IsNullOrWhiteSpace(extracted)) return extracted;
+            if (clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return Shorten(clean, 180);
+            return "";
+        }
+
+        private static string BrowserDisplayTitle(string snippet, string url, string token)
+        {
+            if (string.IsNullOrWhiteSpace(snippet)) return "";
+            string text = ScannerHelpers.CollapseWhitespaceForDisplay(snippet);
+            text = System.Net.WebUtility.HtmlDecode(text);
+            if (!string.IsNullOrWhiteSpace(url)) text = text.Replace(url, " ");
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"https?://[^\s""'<>|\\]+", " ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"[A-Za-z0-9+/]{80,}={0,2}", " ");
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"[%&?_=:/\\]{3,}", " ");
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim(' ', '-', '|', '/', ':');
+            if (text.Length < 8) return "";
+            if (!string.IsNullOrWhiteSpace(token) && text.Equals(token, StringComparison.OrdinalIgnoreCase)) return "";
+            int lettersOrDigits = text.Count(char.IsLetterOrDigit);
+            int symbols = text.Count(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c));
+            if (lettersOrDigits < 6 || symbols > lettersOrDigits) return "";
+            return Shorten(text, 150);
         }
 
         private static string ExtractFirstUrl(string text)

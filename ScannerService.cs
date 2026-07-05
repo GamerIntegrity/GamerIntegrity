@@ -14,7 +14,7 @@ namespace GamerIntegrity
 {
     public static class ScannerService
     {
-        private const int MaxFileNameMatches = 3000;
+        private const int MaxFileNameMatches = 2500;
         private const int MaxScannedFileSystemEntries = 250000;
         private const int MaxHistoryBytes = 96 * 1024 * 1024;
 
@@ -52,65 +52,65 @@ namespace GamerIntegrity
 
             try
             {
-                Notify(progress, 3, "Getting the scan ready...");
+                Notify(progress, 3, "Starting offline scan...");
                 CollectRuntimePrivilegeInfo(report);
 
-                Notify(progress, 10, "Reading Windows version and compatibility details...");
+                Notify(progress, 10, "Checking Windows and admin access...");
                 CollectOsCompatibilityInfo(report);
-                Notify(progress, 14, "Windows compatibility details captured.");
+                Notify(progress, 14, "Windows and admin access checked.");
 
-                Notify(progress, 22, "Measuring network and display inventory...");
+                Notify(progress, 22, "Reading display and network inventory...");
                 CollectNetworkAndDisplayInfo(report);
-                Notify(progress, 26, "Network and display inventory captured.");
+                Notify(progress, 26, "Display and network inventory checked.");
 
-                Notify(progress, 34, "Reading Windows Security Center antivirus state...");
+                Notify(progress, 34, "Checking Windows Security status...");
                 CollectAntivirusInfo(report);
-                Notify(progress, 38, "Windows Security Center antivirus state captured.");
+                Notify(progress, 38, "Windows Security status checked.");
 
-                Notify(progress, 46, "Reading Secure Boot, TPM, VBS/HVCI, BCD, and driver-blocklist state...");
+                Notify(progress, 46, "Checking boot security, TPM, kernel settings, and driver blocklist...");
                 CollectBootSecurityInfo(report);
-                Notify(progress, 50, "Boot security settings captured.");
+                Notify(progress, 50, "Boot security settings checked.");
 
-                Notify(progress, 54, "Checking installed programs for cheat, trainer, decompiler, debugger, and process-inspection tools...");
+                Notify(progress, 54, "Checking installed tools and reverse-engineering apps...");
                 installedProgramMatches = ScanInstalledProgramIndicators(report);
-                Notify(progress, 58, "Installed program check complete: " + installedProgramMatches.Count + " flagged tool/program detection(s).");
+                Notify(progress, 58, "Installed tools check complete: " + installedProgramMatches.Count + " flagged tool/program detection(s).");
 
-                Notify(progress, 60, "Checking AmCache and Prefetch for cheat/tool execution traces...");
+                Notify(progress, 60, "Checking launch traces from AmCache and Prefetch...");
                 executionArtifacts = ScanAmCacheAndPrefetchEvidence(report);
-                Notify(progress, 62, "Execution evidence check complete: " + executionArtifacts.Count + " AmCache/Prefetch trace(s).");
+                Notify(progress, 62, "Launch trace check complete: " + executionArtifacts.Count + " AmCache/Prefetch trace(s).");
 
-                Notify(progress, 64, "Checking running processes, services, driver entries, scheduled tasks, and startup entries...");
+                Notify(progress, 64, "Checking startup items, services, tasks, and recent app activity...");
                 runtimeArtifacts = ScanRuntimeStartupServiceEvidence(report);
-                Notify(progress, 66, "Runtime/startup check complete: " + runtimeArtifacts.Count + " active or persistent artifact(s).");
+                Notify(progress, 66, "Startup and usage trace check complete: " + runtimeArtifacts.Count + " active or persistent artifact(s).");
 
-                Notify(progress, 68, "Enumerating driver services, signatures, hashes, and services...");
+                Notify(progress, 68, "Checking driver inventory and signatures...");
                 drivers = CollectDriverInfo(report);
-                Notify(progress, 72, "Driver/service inventory complete: " + drivers.Count + " driver service(s) inspected.");
+                Notify(progress, 72, "Driver inventory complete: " + drivers.Count + " driver service(s) inspected.");
 
-                Notify(progress, 76, "Collecting board, BIOS, disk, and network-adapter identity records...");
+                Notify(progress, 76, "Collecting hardware identity records...");
                 CollectHardwareIdentityInfo(report, hardwareRecords);
-                Notify(progress, 80, "Hardware identity collection complete: " + hardwareRecords.Count + " record(s) captured.");
+                Notify(progress, 80, "Hardware identity check complete: " + hardwareRecords.Count + " record(s) captured.");
 
-                Notify(progress, 84, "Reading retained USB and USB-storage connection history...");
+                Notify(progress, 84, "Checking USB and external-device history...");
                 CollectExternalDeviceInfo(report, deviceRecords);
-                Notify(progress, 86, "USB history collection complete: " + deviceRecords.Count + " device record(s) captured.");
+                Notify(progress, 86, "USB history check complete: " + deviceRecords.Count + " device record(s) captured.");
 
-                Notify(progress, 88, "Detecting browser profiles and scanning local history keyword hits...");
+                Notify(progress, 88, "Checking local browser history for cheat/provider leads...");
                 browserMatches = ScanBrowserHistoryKeywords(report, browserHistorySources);
-                Notify(progress, 90, "Browser/domain keyword scan complete: " + browserMatches.Count + " keyword detection(s) across " + browserHistorySources.Count + " detected profile(s).");
+                Notify(progress, 90, "Browser history check complete: " + browserMatches.Count + " keyword detection(s) across " + browserHistorySources.Count + " detected profile(s).");
 
-                Notify(progress, 91, "Checking browser source/download records and local path traces...");
+                Notify(progress, 91, "Checking browser download/source records...");
                 browserDownloadMatches = ScanBrowserDownloadEvidence(report, browserHistorySources);
-                Notify(progress, 92, "Browser source/download evidence check complete: " + browserDownloadMatches.Count + " record(s).");
+                Notify(progress, 92, "Browser download/source check complete: " + browserDownloadMatches.Count + " record(s).");
 
                 if (options.IncludeFileNameScan)
                 {
-                    Notify(progress, 93, "Scanning common user and developer folders for cheat/source/build file names...");
+                    Notify(progress, 93, "Checking common user folders for cheat/source/build names...");
                     fileMatches = ScanScopedFileNames(report);
-                    Notify(progress, 95, "File/folder name scan complete: " + fileMatches.Count + " match(es).");
+                    Notify(progress, 95, "Files and folders check complete: " + fileMatches.Count + " match(es).");
                 }
 
-                Notify(progress, 96, "Grouping source/build detections and building evidence timeline...");
+                Notify(progress, 96, "Grouping related evidence and building the timeline...");
                 sourceProjects = AnalyzeSourceProjects(report, fileMatches, executionArtifacts, runtimeArtifacts);
                 cheatingTimeline = BuildCheatingTimeline(fileMatches, browserMatches, browserDownloadMatches, executionArtifacts, runtimeArtifacts, sourceProjects);
 
@@ -123,7 +123,7 @@ namespace GamerIntegrity
                 integrity.ManifestPath = Path.Combine(outputDirectory, "GamerIntegrity_Report_Integrity.json");
                 string redactedManifestPath = Path.Combine(outputDirectory, "GamerIntegrity_Report_Redacted_Integrity.json");
 
-                Notify(progress, 98, "Preparing in-app scan results...");
+                Notify(progress, 98, "Preparing the in-app report view...");
                 string jsonContent = ReportWriter.BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
                     browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
                     cheatingTimeline, integrity, false);
@@ -152,7 +152,7 @@ namespace GamerIntegrity
 
                 if (options.WriteReports)
                 {
-                    Notify(progress, 99, "Exporting selected scan files...");
+                    Notify(progress, 99, "Exporting the selected report files...");
                     bool wroteJson = ReportWriter.WriteJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
                         browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
                         cheatingTimeline, integrity, jsonPath, false);
@@ -383,6 +383,7 @@ namespace GamerIntegrity
                     Score = best.Score
                 });
             }
+            DeduplicateInstalledProgramMatches(matches);
             ScannerHelpers.SortEvidence(matches, m => m.Score, m => m.Confidence, m => m.Severity);
             if (matches.Count > 0)
             {
@@ -407,6 +408,34 @@ namespace GamerIntegrity
                 var values = ScannerHelpers.ReadRegistryValues(RegistryHive.CurrentUser, uninstall + "\\" + name, RegistryView.Default);
                 yield return Tuple.Create(Value(values, "DisplayName"), Value(values, "InstallLocation"));
             }
+        }
+
+        private static void DeduplicateInstalledProgramMatches(List<FileNameMatch> matches)
+        {
+            var groups = matches.GroupBy(m => InstalledProgramKey(m.Path), StringComparer.OrdinalIgnoreCase).ToList();
+            matches.Clear();
+            foreach (var group in groups)
+            {
+                var best = group.OrderByDescending(m => m.Score).ThenByDescending(m => m.Confidence).ThenByDescending(m => m.Severity).First();
+                int count = group.Count();
+                if (count > 1 && best.Path.IndexOf("seen in", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    best.Path = best.Path + " (seen in " + count.ToString(CultureInfo.InvariantCulture) + " uninstall entries)";
+                }
+                matches.Add(best);
+            }
+        }
+
+        private static string InstalledProgramKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "";
+            string name = value;
+            int pipe = name.IndexOf(" | ", StringComparison.Ordinal);
+            if (pipe >= 0) name = name.Substring(0, pipe);
+            name = Regex.Replace(name, @"\s*\(remove only\)\s*", "", RegexOptions.IgnoreCase);
+            name = Regex.Replace(name, @"\s*\(seen in \d+ uninstall entries\)\s*", "", RegexOptions.IgnoreCase);
+            name = Regex.Replace(name, @"\s+", " ").Trim().ToLowerInvariant();
+            return name;
         }
 
         private static string Value(Dictionary<string, object> values, string key)
@@ -506,14 +535,24 @@ namespace GamerIntegrity
             ScanServices(artifacts, rules);
             ScanRunKeys(artifacts, rules);
             ScanScheduledTasks(artifacts, rules);
+            ScanUserAssist(artifacts, rules);
+            ScanBamDam(artifacts, rules);
+            ScanJumpListsAndRecentItems(artifacts, rules);
+            ScanShellBags(artifacts, rules);
+            ScanRunMruAndRecentDocs(artifacts, rules);
+            ScanMountedDevices(artifacts, rules);
+            ScanDefenderHistory(artifacts, rules);
+            ScanEventLogTextArtifacts(artifacts, rules);
+            ScanSrumDatabase(artifacts, rules);
+            ScanCleanupIndicators(report);
             DeduplicateRuntimeArtifacts(artifacts);
             ScannerHelpers.SortEvidence(artifacts, a => a.Score, a => a.Confidence, a => a.Severity);
             if (artifacts.Count > 0)
             {
                 var sample = string.Join("\n", artifacts.Take(12).Select(a => "- " + a.SourceType + ": " + a.Name + " [" + a.Label + "] " + a.Path));
-                report.AddFinding("Runtime/Startup", "Runtime/startup indicators found", sample, artifacts.Max(a => a.Severity), Math.Min(95, artifacts.Max(a => a.Confidence)), Math.Min(120, artifacts.Sum(a => a.Score)));
+                report.AddFinding("Runtime/Startup", "Launch, startup, and retained history indicators found", sample, artifacts.Max(a => a.Severity), Math.Min(95, artifacts.Max(a => a.Confidence)), Math.Min(100, artifacts.Sum(a => a.Score)));
             }
-            else report.AddFinding("Runtime/Startup", "No runtime/startup indicators found", "Running processes, services, common startup keys, and scheduled task XML files were checked against local indicators.", Severity.Info, 65, 0);
+            else report.AddFinding("Runtime/Startup", "No runtime/startup indicators found", "Running processes, services, startup keys, scheduled tasks, UserAssist, BAM/DAM, Jump Lists, ShellBags, mounted devices, Defender history, SRUM, and local event-log text were checked against local indicators.", Severity.Info, 65, 0);
             return artifacts;
         }
 
@@ -657,6 +696,335 @@ namespace GamerIntegrity
                     Score = best.Score
                 });
             }
+        }
+
+        private static void ScanUserAssist(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            const string root = @"Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist";
+            foreach (string guid in ScannerHelpers.EnumerateSubKeyNames(RegistryHive.CurrentUser, root, RegistryView.Default).Take(80))
+            {
+                string countKey = root + "\\" + guid + @"\Count";
+                foreach (var kv in ScannerHelpers.ReadRegistryValues(RegistryHive.CurrentUser, countKey, RegistryView.Default))
+                {
+                    string decoded = Rot13(kv.Key);
+                    string evidenceValue = decoded + " " + kv.Key;
+                    var best = BestRuleMatch(evidenceValue, rules);
+                    best = AdjustRuleForEvidenceContext(best, evidenceValue, "UsageUserAssist");
+                    if (best == null) continue;
+                    artifacts.Add(new RuntimeArtifact
+                    {
+                        SourceType = "UserAssist launch history",
+                        Name = decoded,
+                        Path = decoded,
+                        Token = best.Token,
+                        Label = best.Label,
+                        Details = "Explorer/UserAssist launch history matched an indicator token.",
+                        When = ScannerHelpers.RegistryKeyLastWriteTime(RegistryHive.CurrentUser, countKey, RegistryView.Default),
+                        Severity = best.Severity,
+                        Confidence = best.Confidence,
+                        Score = best.Score
+                    });
+                }
+            }
+        }
+
+        private static void ScanBamDam(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            var roots = new[]
+            {
+                Tuple.Create("BAM", @"SYSTEM\CurrentControlSet\Services\bam\State\UserSettings"),
+                Tuple.Create("DAM", @"SYSTEM\CurrentControlSet\Services\dam\State\UserSettings")
+            };
+            foreach (var root in roots)
+            {
+                foreach (string sid in ScannerHelpers.EnumerateSubKeyNames(RegistryHive.LocalMachine, root.Item2, RegistryView.Registry64).Take(200))
+                {
+                    string key = root.Item2 + "\\" + sid;
+                    foreach (var kv in ScannerHelpers.ReadRegistryValues(RegistryHive.LocalMachine, key, RegistryView.Registry64))
+                    {
+                        string valueName = kv.Key ?? "";
+                        string evidenceValue = valueName;
+                        var best = BestRuleMatch(evidenceValue, rules);
+                        best = AdjustRuleForEvidenceContext(best, evidenceValue, "UsageBamDam");
+                        if (best == null) continue;
+                        artifacts.Add(new RuntimeArtifact
+                        {
+                            SourceType = root.Item1 + " recent app activity",
+                            Name = ScannerHelpers.GetFileNameOnly(valueName),
+                            Path = ScannerHelpers.NormalizeKernelModulePath(valueName),
+                            Token = best.Token,
+                            Label = best.Label,
+                            Details = root.Item1 + " retained a recent app activity path for this user SID.",
+                            When = ScannerHelpers.RegistryFileTimeValueToString(kv.Value),
+                            Severity = best.Severity,
+                            Confidence = best.Confidence,
+                            Score = best.Score
+                        });
+                    }
+                }
+            }
+        }
+
+        private static void ScanJumpListsAndRecentItems(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            string roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string recent = Path.Combine(roaming, @"Microsoft\Windows\Recent");
+            var roots = new[]
+            {
+                recent,
+                Path.Combine(recent, "AutomaticDestinations"),
+                Path.Combine(recent, "CustomDestinations")
+            };
+            int count = 0;
+            foreach (string root in roots)
+            {
+                if (!Directory.Exists(root)) continue;
+                foreach (string file in SafeEnumerateFiles(root, "*", SearchOption.AllDirectories))
+                {
+                    if (++count > 15000) return;
+                    string data = Path.GetFileName(file) + " " + ReadBinaryAsText(file, 2 * 1024 * 1024);
+                    var best = BestRuleMatch(data, rules);
+                    best = AdjustRuleForEvidenceContext(best, data, "UsageJumpList");
+                    if (best == null) continue;
+                    artifacts.Add(new RuntimeArtifact
+                    {
+                        SourceType = file.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ? "Recent item" : "Jump List",
+                        Name = Path.GetFileName(file),
+                        Path = file,
+                        Token = best.Token,
+                        Label = best.Label,
+                        Details = "Recent item or Jump List content matched an indicator token.",
+                        When = ScannerHelpers.FileTimeString(file),
+                        Severity = best.Severity,
+                        Confidence = Math.Max(45, best.Confidence - 3),
+                        Score = Math.Max(3, best.Score - 3)
+                    });
+                }
+            }
+        }
+
+        private static void ScanShellBags(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            const string root = @"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU";
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.CurrentUser, root, RegistryView.Default, "ShellBag folder history", "UsageShellBag", 5000);
+        }
+
+        private static void ScanRunMruAndRecentDocs(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU", RegistryView.Default, "Run box history", "UsageRunMru", 200);
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs", RegistryView.Default, "Recent document history", "UsageRecentDocs", 5000);
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSavePidlMRU", RegistryView.Default, "Open/Save dialog history", "UsageRecentDocs", 5000);
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedPidlMRU", RegistryView.Default, "Open/Save app history", "UsageRecentDocs", 5000);
+        }
+
+        private static void ScanMountedDevices(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.LocalMachine, @"SYSTEM\MountedDevices", RegistryView.Registry64, "Mounted device history", "UsageMountedDevice", 1000);
+            ScanRegistryTreeText(artifacts, rules, RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2", RegistryView.Default, "Mounted device history", "UsageMountedDevice", 2000);
+        }
+
+        private static void ScanRegistryTreeText(List<RuntimeArtifact> artifacts, List<FileNameRule> rules, RegistryHive hive, string root, RegistryView view, string sourceType, string evidenceKind, int maxKeys)
+        {
+            int visited = 0;
+            var stack = new Stack<string>();
+            stack.Push(root);
+            while (stack.Count > 0 && visited < maxKeys)
+            {
+                string keyPath = stack.Pop();
+                visited++;
+                string keyText = keyPath;
+                var values = ScannerHelpers.ReadRegistryValues(hive, keyPath, view);
+                foreach (var kv in values)
+                {
+                    keyText += " " + kv.Key + " " + RegistryValueToSearchText(kv.Value);
+                }
+                var best = BestRuleMatch(keyText, rules);
+                best = AdjustRuleForEvidenceContext(best, keyText, evidenceKind);
+                if (best != null)
+                {
+                    artifacts.Add(new RuntimeArtifact
+                    {
+                        SourceType = sourceType,
+                        Name = keyPath.Substring(Math.Max(0, keyPath.LastIndexOf('\\') + 1)),
+                        Path = hive + @"\" + keyPath,
+                        Token = best.Token,
+                        Label = best.Label,
+                        Details = sourceType + " matched an indicator token in local registry history.",
+                        When = ScannerHelpers.RegistryKeyLastWriteTime(hive, keyPath, view),
+                        Severity = best.Severity,
+                        Confidence = Math.Max(40, best.Confidence - 5),
+                        Score = Math.Max(2, best.Score - 5)
+                    });
+                }
+                foreach (string child in ScannerHelpers.EnumerateSubKeyNames(hive, keyPath, view))
+                {
+                    stack.Push(keyPath + "\\" + child);
+                    if (stack.Count + visited > maxKeys) break;
+                }
+            }
+        }
+
+        private static string RegistryValueToSearchText(object value)
+        {
+            if (value == null) return "";
+            if (value is string s) return s;
+            if (value is string[] arr) return string.Join(" ", arr);
+            if (value is byte[] bytes)
+            {
+                var sb = new StringBuilder(bytes.Length);
+                foreach (byte b in bytes) sb.Append(b >= 32 && b <= 126 ? (char)b : ' ');
+                string ascii = sb.ToString();
+                string unicode = "";
+                try { unicode = Encoding.Unicode.GetString(bytes); } catch { }
+                return ascii + " " + unicode;
+            }
+            return value.ToString() ?? "";
+        }
+
+        private static void ScanDefenderHistory(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            string root = Path.Combine(programData, @"Microsoft\Windows Defender\Scans\History");
+            if (!Directory.Exists(root)) return;
+            int count = 0;
+            foreach (string file in SafeEnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                if (++count > 20000) break;
+                string data = Path.GetFileName(file) + " " + ReadBinaryAsText(file, 1024 * 1024);
+                var best = BestRuleMatch(data, rules);
+                best = AdjustRuleForEvidenceContext(best, data, "UsageDefenderHistory");
+                if (best == null) continue;
+                artifacts.Add(new RuntimeArtifact
+                {
+                    SourceType = "Defender history",
+                    Name = Path.GetFileName(file),
+                    Path = file,
+                    Token = best.Token,
+                    Label = best.Label,
+                    Details = "Local Windows Defender history/quarantine data matched an indicator token.",
+                    When = ScannerHelpers.FileTimeString(file),
+                    Severity = best.Severity,
+                    Confidence = Math.Min(92, best.Confidence + 2),
+                    Score = Math.Max(4, best.Score - 2)
+                });
+            }
+        }
+
+        private static void ScanEventLogTextArtifacts(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            string[] logs =
+            {
+                "Microsoft-Windows-Windows Defender/Operational",
+                "Microsoft-Windows-CodeIntegrity/Operational",
+                "Microsoft-Windows-TaskScheduler/Operational",
+                "System",
+                "Application",
+                "Microsoft-Windows-PowerShell/Operational"
+            };
+            foreach (string log in logs)
+            {
+                string output = RunCommandCapture("wevtutil qe \"" + log + "\" /rd:true /c:80 /f:text");
+                if (string.IsNullOrWhiteSpace(output)) continue;
+                int scanned = 0;
+                foreach (var rule in rules)
+                {
+                    if (++scanned > 800) break;
+                    int pos = output.IndexOf(rule.Token, StringComparison.OrdinalIgnoreCase);
+                    if (pos < 0) continue;
+                    string snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(output, pos, rule.Token.Length));
+                    var adjusted = AdjustRuleForEvidenceContext(rule, snippet, "UsageEventLog");
+                    if (adjusted == null) continue;
+                    artifacts.Add(new RuntimeArtifact
+                    {
+                        SourceType = "Windows event log",
+                        Name = log,
+                        Path = log,
+                        Token = adjusted.Token,
+                        Label = adjusted.Label,
+                        Details = snippet,
+                        Severity = adjusted.Severity,
+                        Confidence = Math.Max(45, adjusted.Confidence - 4),
+                        Score = Math.Max(3, adjusted.Score - 4)
+                    });
+                }
+            }
+        }
+
+        private static void ScanSrumDatabase(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
+        {
+            string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), @"System32\sru\SRUDB.dat");
+            if (!File.Exists(path)) return;
+            string data = ReadBinaryAsText(path, MaxHistoryBytes);
+            if (string.IsNullOrWhiteSpace(data)) return;
+            foreach (var rule in rules)
+            {
+                int pos = data.IndexOf(rule.Token, StringComparison.OrdinalIgnoreCase);
+                if (pos < 0) continue;
+                string snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(data, pos, rule.Token.Length));
+                if (!IsUsefulSrumSnippet(snippet, rule.Token)) continue;
+                var adjusted = AdjustRuleForEvidenceContext(rule, snippet, "UsageSrum");
+                if (adjusted == null) continue;
+                artifacts.Add(new RuntimeArtifact
+                {
+                    SourceType = "SRUM app activity",
+                    Name = rule.Token,
+                    Path = path,
+                    Token = adjusted.Token,
+                    Label = adjusted.Label,
+                    Details = snippet,
+                    When = ScannerHelpers.FileTimeString(path),
+                    Severity = adjusted.Severity,
+                    Confidence = Math.Max(45, adjusted.Confidence - 6),
+                    Score = Math.Max(3, adjusted.Score - 6)
+                });
+            }
+        }
+
+        private static void ScanCleanupIndicators(ScanReport report)
+        {
+            var notes = new List<string>();
+            try
+            {
+                string pf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Prefetch");
+                if (Directory.Exists(pf))
+                {
+                    int count = SafeEnumerateFiles(pf, "*.pf", SearchOption.TopDirectoryOnly).Take(250).Count();
+                    if (count < 10) notes.Add("Prefetch has very few entries. This can happen naturally, but it can also follow cleanup or disabled tracing.");
+                }
+            }
+            catch { }
+
+            int? enablePrefetcher = ScannerHelpers.ReadRegistryDword(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters", "EnablePrefetcher");
+            if (enablePrefetcher.HasValue && enablePrefetcher.Value == 0) notes.Add("Prefetch is disabled in Windows registry.");
+
+            string defenderRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Microsoft\Windows Defender\Scans\History");
+            if (Directory.Exists(defenderRoot))
+            {
+                try
+                {
+                    DateTime last = Directory.GetLastWriteTime(defenderRoot);
+                    if ((DateTime.Now - last).TotalMinutes < 90) notes.Add("Windows Defender history folder changed recently. Review only with other evidence.");
+                }
+                catch { }
+            }
+
+            if (notes.Count > 0)
+                report.AddFinding("Cleanup Indicators", "Possible cleanup or missing-trace indicators", string.Join("\n", notes.Select(n => "- " + n)), Severity.Low, 48, Math.Min(20, notes.Count * 6));
+            else
+                report.AddFinding("Cleanup Indicators", "No obvious cleanup indicators found", "Basic local checks did not find obvious Prefetch/Defender cleanup indicators. Absence of cleanup signals does not prove anything by itself.", Severity.Info, 55, 0);
+        }
+
+        private static string Rot13(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return "";
+            var chars = input.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char c = chars[i];
+                if (c >= 'a' && c <= 'z') chars[i] = (char)('a' + ((c - 'a' + 13) % 26));
+                else if (c >= 'A' && c <= 'Z') chars[i] = (char)('A' + ((c - 'A' + 13) % 26));
+            }
+            return new string(chars);
         }
 
         private static void DeduplicateRuntimeArtifacts(List<RuntimeArtifact> artifacts)
@@ -1178,7 +1546,7 @@ namespace GamerIntegrity
             if (matches.Count > 0)
             {
                 var sample = string.Join("\n", matches.Take(16).Select(m => "- " + m.Label + ": " + m.Path));
-                report.AddFinding("File Name Scan", "File/folder name detections found", sample, matches.Max(m => m.Severity), Math.Min(95, matches.Max(m => m.Confidence)), Math.Min(200, matches.Sum(m => m.Score)));
+                report.AddFinding("File Name Scan", "File/folder name detections found", sample, matches.Max(m => m.Severity), Math.Min(95, matches.Max(m => m.Confidence)), Math.Min(125, matches.Sum(m => m.Score)));
             }
             else report.AddFinding("File Name Scan", "No scoped file/folder name detections found", "Common user, developer, and download locations were checked against the local indicator list.", Severity.Info, 65, 0);
             return matches;
@@ -1188,16 +1556,17 @@ namespace GamerIntegrity
         {
             var roots = new List<string>();
             Action<string> add = p => { if (!string.IsNullOrWhiteSpace(p) && Directory.Exists(p) && !roots.Contains(p, StringComparer.OrdinalIgnoreCase)) roots.Add(p); };
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             add(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
-            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"));
+            add(Path.Combine(userProfile, "Downloads"));
             add(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
-            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "source"));
-            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "repos"));
-            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects"));
+            add(Path.Combine(userProfile, "source"));
+            add(Path.Combine(userProfile, "repos"));
+            add(Path.Combine(userProfile, "Projects"));
+            add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
             add(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
             add(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
-            add(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
-            add(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86));
+            // Do not broad-scan Program Files / WindowsApps. Those folders produce many normal vendor and framework keyword hits.
             return roots;
         }
 
@@ -1223,16 +1592,43 @@ namespace GamerIntegrity
 
         private static bool ShouldSkipDirectory(string path)
         {
+            string lower = ScannerHelpers.ToLowerSafe(path);
             string name = ScannerHelpers.ToLowerSafe(Path.GetFileName(path));
-            return name == "node_modules" || name == ".git" || name == ".vs" || name == "packages" || name == "obj" || name == "temp" || name == "cache";
+            if (name == "node_modules" || name == ".git" || name == ".vs" || name == "packages" || name == "obj" || name == "temp" || name == "cache") return true;
+            if (lower.Contains(@"\windowsapps\") || lower.Contains(@"\program files\windowsapps")) return true;
+            if (lower.Contains(@"\windows defender advanced threat protection\") || lower.Contains(@"\microsoft\windows defender\")) return true;
+            if (lower.Contains(@"\gamerintegrity_wpf_") || lower.Contains(@"\gamerintegrity\release\reports\")) return true;
+            return false;
         }
 
         private static bool IsLikelyBenignFileNameMatch(string path, FileNameRule rule)
         {
             string lower = ScannerHelpers.ToLowerSafe(path);
-            if (rule.Token.Equals("loader", StringComparison.OrdinalIgnoreCase) && (lower.Contains("bootloader") || lower.Contains("classloader"))) return true;
-            if (rule.Token.Equals("cleaner", StringComparison.OrdinalIgnoreCase) && (lower.Contains("disk cleanup") || lower.Contains("ccleaner browser"))) return true;
+            string fileName = ScannerHelpers.ToLowerSafe(Path.GetFileName(path));
+            string token = ScannerHelpers.ToLowerSafe(rule == null ? "" : rule.Token);
+            if (token.Equals("loader", StringComparison.OrdinalIgnoreCase) && (lower.Contains("bootloader") || lower.Contains("classloader"))) return true;
+            if (token.Equals("cleaner", StringComparison.OrdinalIgnoreCase) && (lower.Contains("disk cleanup") || lower.Contains("ccleaner browser"))) return true;
+            if (lower.Contains(@"\program files\windowsapps\") || lower.Contains(@"\program files (x86)\windowsapps\")) return true;
+            if (lower.Contains(@"\windows defender advanced threat protection\") || lower.Contains(@"\microsoft\windows defender\")) return true;
+            if (lower.Contains("wingetdownloader.exe") || lower.Contains("sensesampleuploader.exe")) return true;
+            if (lower.Contains("gamerintegrity_wpf_v") && lower.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return true;
+            if ((token == "trace" || token == "traces") && lower.Contains("gamerintegrity")) return true;
+            if (IsSourceFileNameToken(token) && !fileName.EndsWith(token, StringComparison.OrdinalIgnoreCase)) return true;
+            if (IsCommonAssetOrWebFile(fileName) && IsSourceFileNameToken(token)) return true;
+            if ((token == "radar" || token == "radar.h") && Regex.IsMatch(lower, @"\b(charts?|dashboard|graph|analytics)[-_]?radar\.(html|js|css)$", RegexOptions.IgnoreCase)) return true;
             return false;
+        }
+
+        private static bool IsSourceFileNameToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)) return false;
+            return Regex.IsMatch(token, @"\.(h|hpp|cpp|cxx|cc|cs|lua|py|json)$", RegexOptions.IgnoreCase);
+        }
+
+        private static bool IsCommonAssetOrWebFile(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return false;
+            return Regex.IsMatch(fileName, @"\.(png|jpg|jpeg|gif|webp|ico|svg|html|htm|css)$", RegexOptions.IgnoreCase);
         }
 
 
@@ -1273,11 +1669,11 @@ namespace GamerIntegrity
                     ? "Strong source/build structure indicator"
                     : s.DirectSourceCount > 0 ? "Direct cheat/source naming indicator" : "Project/build context indicator";
             }
-            var projects = map.Values.OrderByDescending(s => s.MaxScore).ThenByDescending(s => s.TotalDetections).ToList();
+            var projects = map.Values.Where(IsMeaningfulSourceProjectGroup).OrderByDescending(s => s.MaxScore).ThenByDescending(s => s.TotalDetections).ToList();
             if (projects.Count > 0)
             {
-                var sample = string.Join("\n", projects.Take(8).Select(p => "- " + p.Determination + ": " + p.Root + " (detections: " + p.TotalDetections + ")"));
-                report.AddFinding("Source Projects", "Cheat software/source/build evidence grouped", sample, projects.Max(p => p.MaxSeverity), Math.Min(95, projects.Max(p => p.MaxConfidence)), Math.Min(180, projects.Sum(p => p.MaxScore + p.TotalDetections * 4)));
+                var sample = string.Join("\n", projects.Take(8).Select(p => "- " + p.Determination + ": " + p.Root + " (direct: " + p.DirectSourceCount + ", supporting: " + Math.Max(0, p.TotalDetections - p.DirectSourceCount) + ")"));
+                report.AddFinding("Source Projects", "Cheat software/source/build evidence grouped", sample, projects.Max(p => p.MaxSeverity), Math.Min(95, projects.Max(p => p.MaxConfidence)), Math.Min(130, projects.Sum(p => p.MaxScore + p.DirectSourceCount * 6 + Math.Min(12, Math.Max(0, p.TotalDetections - p.DirectSourceCount)))));
             }
             else report.AddFinding("Source Projects", "No source/build project groups found", "No grouped source/build structures were identified from the scoped file scan.", Severity.Info, 55, 0);
             return projects;
@@ -1308,31 +1704,139 @@ namespace GamerIntegrity
 
         private static bool IsDirectCheatSourceMatch(FileNameMatch m)
         {
+            string token = ScannerHelpers.ToLowerSafe(m.Token);
+            string path = ScannerHelpers.ToLowerSafe(m.Path);
             string combined = ScannerHelpers.ToLowerSafe(m.Token + " " + m.Label + " " + m.Path);
-            return combined.Contains("cheat") || combined.Contains("aimbot") || combined.Contains("wallhack") || combined.Contains("esp source") || combined.Contains("source") || combined.Contains("kdmapper") || combined.Contains("spoofer");
+
+            if (IsCommonDependencyOrGeneratedPath(path) && IsGenericProjectStructureToken(token)) return false;
+            if (IsGenericProjectStructureToken(token)) return false;
+
+            if (IsStrongDirectCheatFileToken(token)) return true;
+            if (combined.Contains("extreme injector") || combined.Contains("kdmapper") || combined.Contains("driver mapper") || combined.Contains("hwid spoofer")) return true;
+            if (combined.Contains("aimbot") || combined.Contains("triggerbot") || combined.Contains("wallhack") || combined.Contains("radar") || combined.Contains("chams") || combined.Contains("rcs")) return true;
+            if (combined.Contains("cheat source") || combined.Contains("cheat project") || combined.Contains("cheat build")) return true;
+            return false;
         }
 
         private static bool LooksLikeProjectOrBuildArtifact(string path)
         {
-            return Regex.IsMatch(path ?? "", "\\.(sln|vcxproj|csproj|h|hpp|cpp|cxx|cs|pdb|lib|dll|sys|exe)$", RegexOptions.IgnoreCase)
-                || Regex.IsMatch(path ?? "", @"\\(bin|obj|x64|x86|release|debug|src|source)\\", RegexOptions.IgnoreCase);
+            string value = path ?? "";
+            if (IsCommonDependencyOrGeneratedPath(value) && !ContainsStrongCheatContext(value)) return false;
+            return Regex.IsMatch(value, "\\.(sln|vcxproj|csproj|h|hpp|cpp|cxx|cs|pdb|lib|dll|sys|exe)$", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(value, @"\\(bin|obj|x64|x86|release|debug|build)\\", RegexOptions.IgnoreCase)
+                || (Regex.IsMatch(value, @"\\(src|source)\\", RegexOptions.IgnoreCase) && ContainsStrongCheatContext(value));
         }
 
         private static string GuessProjectRoot(string path)
         {
             try
             {
-                var dir = File.Exists(path) ? Path.GetDirectoryName(path) : path;
+                string dir = File.Exists(path) ? Path.GetDirectoryName(path) : path;
+                if (string.IsNullOrWhiteSpace(dir)) return path ?? "";
+
                 var current = new DirectoryInfo(dir);
-                for (int i = 0; i < 5 && current != null; i++, current = current.Parent)
+                for (int i = 0; i < 7 && current != null; i++, current = current.Parent)
                 {
                     if (SafeEnumerateFiles(current.FullName, "*.sln", SearchOption.TopDirectoryOnly).Any() ||
                         SafeEnumerateFiles(current.FullName, "*.vcxproj", SearchOption.TopDirectoryOnly).Any() ||
                         SafeEnumerateFiles(current.FullName, "*.csproj", SearchOption.TopDirectoryOnly).Any()) return current.FullName;
                 }
+
+                string knownContainerRoot = NormalizeProjectRootByKnownContainers(dir);
+                if (!string.IsNullOrWhiteSpace(knownContainerRoot)) return knownContainerRoot;
+                string normalized = NormalizeProjectRootByPathMarkers(dir);
+                if (!string.IsNullOrWhiteSpace(normalized)) return normalized;
+                if (IsUnsafeBroadProjectRoot(dir)) return "";
                 return dir;
             }
             catch { return path ?? ""; }
+        }
+
+        private static bool IsMeaningfulSourceProjectGroup(SourceProjectSummary s)
+        {
+            if (s == null || string.IsNullOrWhiteSpace(s.Root)) return false;
+            if (IsUnsafeBroadProjectRoot(s.Root)) return false;
+            if (IsCommonDependencyOrGeneratedPath(s.Root) && s.DirectSourceCount == 0 && s.MapperCount == 0 && s.InjectorSpooferTraceCount == 0) return false;
+            if (s.DirectSourceCount >= 2) return true;
+            if (s.MapperCount > 0 || s.InjectorSpooferTraceCount > 0) return true;
+            if (s.GeneratedStructure && s.TotalDetections >= 3 && (s.Tokens.Any(IsStrongDirectCheatFileToken) || s.Labels.Any(l => ScannerHelpers.ContainsInsensitive(l, "cheat")))) return true;
+            return false;
+        }
+
+        private static string NormalizeProjectRootByKnownContainers(string dir)
+        {
+            if (string.IsNullOrWhiteSpace(dir)) return "";
+            var parts = dir.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (parts.Count == 0) return "";
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (parts[i].Equals("source", StringComparison.OrdinalIgnoreCase) && i + 2 < parts.Count && parts[i + 1].Equals("repos", StringComparison.OrdinalIgnoreCase))
+                    return RebuildPathPrefix(parts, i + 3, dir);
+                if ((parts[i].Equals("repos", StringComparison.OrdinalIgnoreCase) || parts[i].Equals("projects", StringComparison.OrdinalIgnoreCase)) && i + 1 < parts.Count)
+                    return RebuildPathPrefix(parts, i + 2, dir);
+                if ((parts[i].Equals("Desktop", StringComparison.OrdinalIgnoreCase) || parts[i].Equals("Downloads", StringComparison.OrdinalIgnoreCase) || parts[i].Equals("Documents", StringComparison.OrdinalIgnoreCase)) && i + 1 < parts.Count)
+                    return RebuildPathPrefix(parts, Math.Min(parts.Count, i + 2), dir);
+            }
+            return "";
+        }
+
+        private static string RebuildPathPrefix(List<string> parts, int count, string originalPath)
+        {
+            count = Math.Max(1, Math.Min(count, parts.Count));
+            string prefix = string.Join(Path.DirectorySeparatorChar.ToString(), parts.Take(count));
+            if (originalPath.Length >= 2 && originalPath[1] == ':') return prefix;
+            if (originalPath.StartsWith(@"\\", StringComparison.Ordinal)) return @"\\" + prefix;
+            if (originalPath.StartsWith(@"\", StringComparison.Ordinal)) return @"\" + prefix;
+            return prefix;
+        }
+
+        private static bool IsUnsafeBroadProjectRoot(string root)
+        {
+            string normalized = ScannerHelpers.ToLowerSafe((root ?? "").TrimEnd('\\', '/'));
+            if (string.IsNullOrWhiteSpace(normalized)) return true;
+            string userProfile = ScannerHelpers.ToLowerSafe(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\', '/'));
+            if (!string.IsNullOrWhiteSpace(userProfile) && normalized.Equals(userProfile, StringComparison.OrdinalIgnoreCase)) return true;
+            if (normalized.EndsWith(@"\users") || normalized.Equals(@"c:\users", StringComparison.OrdinalIgnoreCase)) return true;
+            if (normalized.Equals(@"c:\", StringComparison.OrdinalIgnoreCase) || normalized.Equals("c:", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private static bool LooksLikeMeaningfulProjectExecutableUsage(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            string file = ScannerHelpers.ToLowerSafe(ScannerHelpers.GetFileNameOnly(value));
+            if (!file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && !v.Contains(".exe")) return false;
+            if (file.Contains("inject") || file.Contains("mapper") || file.Contains("spoofer") || file.Contains("loader") || file.Contains("cheat") || file.Contains("aimbot") || file.Contains("esp") || file.Contains("radar") || file.Contains("trigger")) return true;
+            if (v.Contains(@"\x64\release\") || v.Contains(@"\x64\debug\") || v.Contains(@"\build\release\") || v.Contains(@"\bin\release\")) return ContainsStrongCheatContext(v) && !IsGenericProjectStructureOnlyContext(v);
+            return false;
+        }
+
+        private static bool IsGenericProjectStructureOnlyContext(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            string[] direct = { "aimbot", "triggerbot", "wallhack", "esp.h", "esp.cpp", "radar.h", "radar.cpp", "rcs.h", "rcs.cpp", "chams", "kdmapper", "extreme injector", "spoofer", "cheat loader", "hwid" };
+            return !direct.Any(d => v.Contains(d));
+        }
+
+        private static string NormalizeProjectRootByPathMarkers(string dir)
+        {
+            if (string.IsNullOrWhiteSpace(dir)) return "";
+            string[] markers =
+            {
+                "\\build\\_deps\\", "\\build\\cmakefiles\\", "\\build\\release\\", "\\build\\debug\\", "\\build\\",
+                "\\x64\\release\\", "\\x64\\debug\\", "\\x86\\release\\", "\\x86\\debug\\",
+                "\\bin\\release\\", "\\bin\\debug\\", "\\obj\\", "\\src\\", "\\source\\"
+            };
+            string lower = ScannerHelpers.ToLowerSafe(dir);
+            foreach (string marker in markers)
+            {
+                int index = lower.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                if (index > 0)
+                {
+                    return dir.Substring(0, index);
+                }
+            }
+            return "";
         }
 
         private static List<CheatingTimelineEvent> BuildCheatingTimeline(List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserDownloadMatch> browserDownloads, List<ExecutionArtifact> executionArtifacts, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects)
@@ -1400,12 +1904,25 @@ namespace GamerIntegrity
             string token = ScannerHelpers.ToLowerSafe(rule.Token);
             string label = NormalizeDetectionLabel(rule.Label);
             bool isBrowser = evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource" || evidenceKind == "BrowserDownloadLocal";
-            bool isUsageTrace = evidenceKind == "ExecutionPrefetch" || evidenceKind == "ExecutionAmCache" || evidenceKind == "RuntimeProcess" || evidenceKind == "RuntimeService" || evidenceKind == "StartupRegistry" || evidenceKind == "ScheduledTask";
+            bool isUsageTrace = evidenceKind == "ExecutionPrefetch" || evidenceKind == "ExecutionAmCache" || evidenceKind == "RuntimeProcess" || evidenceKind == "RuntimeService" || evidenceKind == "StartupRegistry" || evidenceKind == "ScheduledTask" || evidenceKind.StartsWith("Usage", StringComparison.OrdinalIgnoreCase);
             bool isLocalDownload = evidenceKind == "BrowserDownloadLocal";
             bool hasStrongContext = ContainsStrongCheatContext(value);
             bool broad = IsBroadWeakToken(token) || IsBroadRuleLabel(rule.Label);
+            bool contextOnlyHistory = IsContextOnlyHistoryEvidenceKind(evidenceKind);
+            bool genericProjectToken = IsGenericProjectStructureToken(token);
 
             if (IsKnownBenignContextMatch(value, token, evidenceKind, hasStrongContext, broad)) return null;
+
+            if (isUsageTrace && genericProjectToken && !IsStrongUsageToken(token))
+            {
+                if (!LooksLikeMeaningfulProjectExecutableUsage(value)) return null;
+            }
+
+            if (evidenceKind == "FileName" && genericProjectToken)
+            {
+                if (IsCommonDependencyOrGeneratedPath(value)) return null;
+                if (!hasStrongContext) return null;
+            }
 
             Severity severity = rule.Severity;
             int confidence = rule.Confidence;
@@ -1417,6 +1934,21 @@ namespace GamerIntegrity
                 confidence = Math.Min(confidence, hasStrongContext ? 56 : 44);
                 score = Math.Min(score, hasStrongContext ? 8 : 3);
                 severity = Severity.Low;
+            }
+
+            if (evidenceKind == "FileName" && genericProjectToken)
+            {
+                label = "Supporting project-structure context";
+                confidence = Math.Min(confidence, 52);
+                score = Math.Min(score, 5);
+                severity = Severity.Low;
+            }
+
+            if (contextOnlyHistory)
+            {
+                confidence = Math.Min(confidence, IsStrongUsageToken(token) || hasStrongContext ? 72 : 50);
+                score = Math.Min(score, IsStrongUsageToken(token) || hasStrongContext ? 16 : 5);
+                if (severity > Severity.Medium) severity = Severity.Medium;
             }
 
             if (IsContextSensitiveSingleWord(token) && !hasStrongContext)
@@ -1435,12 +1967,25 @@ namespace GamerIntegrity
 
             if (isUsageTrace)
             {
-                if (IsStrongUsageToken(token) || hasStrongContext)
+                if (genericProjectToken && !IsStrongUsageToken(token))
+                {
+                    label = "Project executable activity context";
+                    confidence = Math.Min(confidence, contextOnlyHistory ? 55 : 64);
+                    score = Math.Min(score, contextOnlyHistory ? 6 : 10);
+                    if (severity > Severity.Medium) severity = Severity.Medium;
+                }
+                else if (IsStrongUsageToken(token) || hasStrongContext)
                 {
                     confidence = Math.Min(96, confidence + 8);
-                    score = Math.Min(90, score + (evidenceKind == "ExecutionPrefetch" ? 18 : 12));
-                    if (severity < Severity.High && IsStrongUsageToken(token)) severity = Severity.High;
-                    label = NormalizeUsageLabel(label, token);
+                    int boost = evidenceKind == "ExecutionPrefetch" ? 18 : (contextOnlyHistory ? 0 : (evidenceKind.StartsWith("Usage", StringComparison.OrdinalIgnoreCase) ? 8 : 12));
+                    score = Math.Min(contextOnlyHistory ? 18 : 90, score + boost);
+                    if (!contextOnlyHistory && severity < Severity.High && IsStrongUsageToken(token)) severity = Severity.High;
+                    if (contextOnlyHistory)
+                    {
+                        if (severity > Severity.Medium) severity = Severity.Medium;
+                        confidence = Math.Min(confidence, 72);
+                    }
+                    label = NormalizeUsageLabel(label, token, evidenceKind);
                 }
                 else if (broad)
                 {
@@ -1450,7 +1995,7 @@ namespace GamerIntegrity
                 }
             }
 
-            if (evidenceKind == "FileName" && IsHighTrustUserEvidencePath(value) && hasStrongContext)
+            if (evidenceKind == "FileName" && !genericProjectToken && IsHighTrustUserEvidencePath(value) && hasStrongContext)
             {
                 confidence = Math.Min(95, confidence + 5);
                 score = Math.Min(90, score + 8);
@@ -1474,13 +2019,67 @@ namespace GamerIntegrity
             };
         }
 
+        private static bool IsContextOnlyHistoryEvidenceKind(string evidenceKind)
+        {
+            return evidenceKind == "UsageJumpList"
+                || evidenceKind == "UsageShellBag"
+                || evidenceKind == "UsageRecentDocs"
+                || evidenceKind == "UsageMountedDevice"
+                || evidenceKind == "UsageDefenderHistory"
+                || evidenceKind == "UsageEventLog"
+                || evidenceKind == "UsageSrum";
+        }
+
+        private static bool IsGenericProjectStructureToken(string token)
+        {
+            string[] tokens = { "src", "source", "driver", "driver.h", "driver.cpp", "driver.hpp", "loader", "loader.h", "loader.cpp", "loader.hpp", "sdk", "dump", "dumper", "client", "client dll" };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsCommonDependencyOrGeneratedPath(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            string[] markers =
+            {
+                "\\_deps\\", "\\cmakefiles\\", "\\json-src\\", "\\json-subbuild\\", "\\json-populate-prefix\\",
+                "\\imgui-src\\", "\\imgui-subbuild\\", "\\imgui-populate-prefix\\", "\\tests\\", "\\test\\",
+                "\\examples\\", @"\example_", "\\thirdparty\\", "\\third_party\\", "\\benchmarks\\", "\\fuzzer\\",
+                "\\external\\", "\\vendor\\", "\\packages\\", "\\node_modules\\"
+            };
+            return markers.Any(m => v.Contains(m));
+        }
+
+        private static bool IsStrongDirectCheatFileToken(string token)
+        {
+            string[] tokens =
+            {
+                "aimbot", "aimbot.h", "aimbot.cpp", "triggerbot", "triggerbot.h", "triggerbot.cpp",
+                "esp.h", "esp.cpp", "radar.h", "radar.cpp", "rcs.h", "rcs.cpp", "chams.h", "chams.cpp",
+                "wallhack", "ragebot", "legitbot", "silent aim", "norecoil", "kdmapper", "driver mapper",
+                "manual mapper", "manualmap", "extreme injector", "injector", "hwid spoofer", "spoofer", "trace cleaner"
+            };
+            return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsUsefulSrumSnippet(string snippet, string token)
+        {
+            string value = ScannerHelpers.ToLowerSafe(snippet);
+            string t = ScannerHelpers.ToLowerSafe(token);
+            bool hasPathOrExe = value.Contains(".exe") || value.Contains("\\users\\") || value.Contains("\\program files\\") || value.Contains("\\device\\harddisk") || value.Contains("c:\\");
+            if (!hasPathOrExe) return false;
+            if ((IsShortOrRiskyToken(t) || IsVeryBroadWeakToken(t)) && !ContainsStrongCheatContext(value)) return false;
+            if (value.Contains("srudb.dat") && !ContainsStrongCheatContext(value)) return false;
+            return true;
+        }
+
         private static bool IsKnownBenignContextMatch(string value, string token, string evidenceKind, bool hasStrongContext, bool broad)
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
 
             if (IsNormalFrameworkOrVendorPath(value, token) && !hasStrongContext) return true;
+            if (IsNormalPackagedAppOrSecurityPath(value, token) && !hasStrongContext) return true;
 
-            if ((evidenceKind == "RuntimeService" || evidenceKind == "RuntimeProcess") && IsNormalWindowsOrVendorRuntime(value, token) && !hasStrongContext) return true;
+            if ((evidenceKind == "RuntimeService" || evidenceKind == "RuntimeProcess" || evidenceKind == "ScheduledTask") && IsNormalWindowsOrVendorRuntime(value, token) && !hasStrongContext) return true;
 
             if ((evidenceKind == "FileName" || evidenceKind == "BrowserDownloadLocal") && IsNormalFrameworkBinary(value, token) && !hasStrongContext) return true;
 
@@ -1492,6 +2091,17 @@ namespace GamerIntegrity
 
             if ((evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource") && broad && !hasStrongContext) return true;
 
+            return false;
+        }
+
+        private static bool IsNormalPackagedAppOrSecurityPath(string value, string token)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            string t = ScannerHelpers.ToLowerSafe(token);
+            if (v.Contains(@"\program files\windowsapps\") || v.Contains(@"\program files (x86)\windowsapps\")) return true;
+            if (v.Contains("wingetdownloader.exe") || v.Contains("sensesampleuploader.exe")) return true;
+            if (v.Contains(@"\windows defender advanced threat protection\") || v.Contains(@"\microsoft\windows defender\")) return true;
+            if ((t == "loader exe" || t == "loader" || t == "source" || t == "client" || t == "driver" || t == "trace") && (v.Contains(@"\program files\") || v.Contains(@"\program files (x86)\"))) return true;
             return false;
         }
 
@@ -1612,16 +2222,37 @@ namespace GamerIntegrity
             return label.Replace("cheat-adjacent", "context-needed");
         }
 
-        private static string NormalizeUsageLabel(string label, string token)
+        private static string NormalizeUsageLabel(string label, string token, string evidenceKind)
         {
             string lower = ScannerHelpers.ToLowerSafe(label + " " + token);
-            if (lower.Contains("inject")) return "Injector launch trace";
-            if (lower.Contains("mapper") || lower.Contains("kdmapper") || lower.Contains("driver mapper")) return "Driver mapper launch trace";
-            if (lower.Contains("loader")) return "Cheat loader launch trace";
-            if (lower.Contains("spoofer") || lower.Contains("hwid")) return "Spoofer launch trace";
-            if (lower.Contains("bypass")) return "Anti-cheat bypass launch trace";
-            if (lower.Contains("aimbot") || lower.Contains("triggerbot") || lower.Contains("esp") || lower.Contains("radar")) return "Cheat feature launch trace";
-            return label;
+            string subject = "Tool";
+            if (lower.Contains("inject")) subject = "Injector";
+            else if (lower.Contains("mapper") || lower.Contains("kdmapper") || lower.Contains("driver mapper")) subject = "Driver mapper";
+            else if (lower.Contains("loader")) subject = "Cheat loader";
+            else if (lower.Contains("spoofer") || lower.Contains("hwid")) subject = "Spoofer";
+            else if (lower.Contains("bypass")) subject = "Anti-cheat bypass";
+            else if (lower.Contains("aimbot") || lower.Contains("triggerbot") || lower.Contains("esp") || lower.Contains("radar")) subject = "Cheat feature";
+
+            switch (evidenceKind)
+            {
+                case "ExecutionPrefetch": return subject + " launch trace";
+                case "ExecutionAmCache": return subject + " application-history trace";
+                case "RuntimeProcess": return subject + " running process";
+                case "RuntimeService": return subject + " service/driver entry";
+                case "StartupRegistry": return subject + " startup registry entry";
+                case "ScheduledTask": return subject + " scheduled-task entry";
+                case "UsageUserAssist": return subject + " Explorer launch history";
+                case "UsageBamDam": return subject + " recent app activity";
+                case "UsageJumpList": return subject + " recent item trace";
+                case "UsageShellBag": return subject + " folder history trace";
+                case "UsageRunMru": return subject + " Run box history trace";
+                case "UsageRecentDocs": return subject + " recent file/dialog history";
+                case "UsageMountedDevice": return subject + " mounted-device history";
+                case "UsageDefenderHistory": return subject + " Defender history trace";
+                case "UsageEventLog": return subject + " event-log trace";
+                case "UsageSrum": return subject + " SRUM app-activity trace";
+                default: return subject + " usage trace";
+            }
         }
 
         private static FileNameRule BestRuleMatch(string value, List<FileNameRule> rules)
