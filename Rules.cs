@@ -145,12 +145,12 @@ namespace GamerIntegrity
         {
             var rules = new List<FileNameRule>
             {
-                new FileNameRule { Token = @"unknowncheats", Category = @"Browser History", Label = @"Browser history shows known cheat forum/site", Severity = Severity.High, Confidence = 82, Score = 45 },
-                new FileNameRule { Token = @"unknowncheats.me", Category = @"Browser History", Label = @"Browser history shows known cheat forum/site", Severity = Severity.High, Confidence = 84, Score = 48 },
-                new FileNameRule { Token = @"guidedhacking", Category = @"Browser History", Label = @"Browser history shows game-hacking forum/site", Severity = Severity.High, Confidence = 78, Score = 38 },
-                new FileNameRule { Token = @"guidedhacking.com", Category = @"Browser History", Label = @"Browser history shows game-hacking forum/site", Severity = Severity.High, Confidence = 80, Score = 42 },
-                new FileNameRule { Token = @"elitepvpers.com", Category = @"Browser History", Label = @"Browser history shows cheat marketplace/forum domain", Severity = Severity.High, Confidence = 82, Score = 45 },
-                new FileNameRule { Token = @"blackhatworld.com", Category = @"Browser History", Label = @"Browser history shows blackhat marketplace/forum domain", Severity = Severity.Medium, Confidence = 68, Score = 24 },
+                new FileNameRule { Token = @"unknowncheats", Category = @"Browser History", Label = @"Browser history shows cheat site/domain", Severity = Severity.High, Confidence = 82, Score = 45 },
+                new FileNameRule { Token = @"unknowncheats.me", Category = @"Browser History", Label = @"Browser history shows cheat site/domain", Severity = Severity.High, Confidence = 84, Score = 48 },
+                new FileNameRule { Token = @"guidedhacking", Category = @"Browser History", Label = @"Browser history shows game-hacking site/domain", Severity = Severity.High, Confidence = 78, Score = 38 },
+                new FileNameRule { Token = @"guidedhacking.com", Category = @"Browser History", Label = @"Browser history shows game-hacking site/domain", Severity = Severity.High, Confidence = 80, Score = 42 },
+                new FileNameRule { Token = @"elitepvpers.com", Category = @"Browser History", Label = @"Browser history shows cheat marketplace/domain", Severity = Severity.High, Confidence = 82, Score = 45 },
+                new FileNameRule { Token = @"blackhatworld.com", Category = @"Browser History", Label = @"Browser history shows blackhat marketplace/domain", Severity = Severity.Medium, Confidence = 68, Score = 24 },
                 new FileNameRule { Token = @"lethality.club", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"evicted.wtf", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"cheatprovider.store", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 84, Score = 48 },
@@ -171,7 +171,7 @@ namespace GamerIntegrity
                 new FileNameRule { Token = @"cosmocheats.com", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 84, Score = 48 },
                 new FileNameRule { Token = @"disconnect.wtf", Category = @"Browser History", Label = @"Browser history shows cheat/service domain", Severity = Severity.High, Confidence = 78, Score = 38 },
                 new FileNameRule { Token = @"disconnectcheats.com", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 84, Score = 48 },
-                new FileNameRule { Token = @"mpgh.net", Category = @"Browser History", Label = @"Browser history shows game-hacking forum/site", Severity = Severity.High, Confidence = 78, Score = 38 },
+                new FileNameRule { Token = @"mpgh.net", Category = @"Browser History", Label = @"Browser history shows game-hacking site/domain", Severity = Severity.High, Confidence = 78, Score = 38 },
                 new FileNameRule { Token = @"aimjunkies.com", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"artificialaiming.net", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"klar.gg", Category = @"Browser History", Label = @"Browser history shows cheat provider domain", Severity = Severity.High, Confidence = 78, Score = 38 },
@@ -267,12 +267,12 @@ namespace GamerIntegrity
         {
             var rules = new List<FileNameRule>
             {
-                new FileNameRule { Token = @"unknowncheats", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows known cheat forum/site", Severity = Severity.High, Confidence = 82, Score = 45 },
-                new FileNameRule { Token = @"unknowncheats.me", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows known cheat forum/site", Severity = Severity.High, Confidence = 84, Score = 48 },
-                new FileNameRule { Token = @"guidedhacking", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows game-hacking forum/site", Severity = Severity.High, Confidence = 78, Score = 38 },
-                new FileNameRule { Token = @"guidedhacking.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows game-hacking forum/site", Severity = Severity.High, Confidence = 80, Score = 42 },
-                new FileNameRule { Token = @"elitepvpers.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat marketplace/forum domain", Severity = Severity.High, Confidence = 82, Score = 45 },
-                new FileNameRule { Token = @"blackhatworld.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows blackhat marketplace/forum domain", Severity = Severity.Medium, Confidence = 68, Score = 24 },
+                new FileNameRule { Token = @"unknowncheats", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat site/domain", Severity = Severity.High, Confidence = 82, Score = 45 },
+                new FileNameRule { Token = @"unknowncheats.me", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat site/domain", Severity = Severity.High, Confidence = 84, Score = 48 },
+                new FileNameRule { Token = @"guidedhacking", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows game-hacking site/domain", Severity = Severity.High, Confidence = 78, Score = 38 },
+                new FileNameRule { Token = @"guidedhacking.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows game-hacking site/domain", Severity = Severity.High, Confidence = 80, Score = 42 },
+                new FileNameRule { Token = @"elitepvpers.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat marketplace/domain", Severity = Severity.High, Confidence = 82, Score = 45 },
+                new FileNameRule { Token = @"blackhatworld.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows blackhat marketplace/domain", Severity = Severity.Medium, Confidence = 68, Score = 24 },
                 new FileNameRule { Token = @"lethality.club", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"evicted.wtf", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"cheatprovider.store", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 84, Score = 48 },
@@ -293,7 +293,7 @@ namespace GamerIntegrity
                 new FileNameRule { Token = @"cosmocheats.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 84, Score = 48 },
                 new FileNameRule { Token = @"disconnect.wtf", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat/service domain", Severity = Severity.High, Confidence = 78, Score = 38 },
                 new FileNameRule { Token = @"disconnectcheats.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 84, Score = 48 },
-                new FileNameRule { Token = @"mpgh.net", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows game-hacking forum/site", Severity = Severity.High, Confidence = 78, Score = 38 },
+                new FileNameRule { Token = @"mpgh.net", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows game-hacking site/domain", Severity = Severity.High, Confidence = 78, Score = 38 },
                 new FileNameRule { Token = @"aimjunkies.com", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"artificialaiming.net", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 82, Score = 45 },
                 new FileNameRule { Token = @"klar.gg", Category = @"Browser Source/Download Evidence", Label = @"Browser source/download record shows cheat provider domain", Severity = Severity.High, Confidence = 78, Score = 38 },
@@ -422,15 +422,16 @@ namespace GamerIntegrity
             AddRules(rules, "Browser History", "Browser history shows DMA / external input-assist keyword", Severity.High, 76, 35,
                 @"dma cheat", @"dma radar", @"dma firmware", @"pcileech", @"memprocfs", @"leechcore", @"screamer pci", @"pcie squirrel", @"kmbox", @"km box", @"arduino aimbot", @"colorbot", @"pixelbot");
 
-            AddKnownCheatBrandRules(rules, "Browser History", "Browser history shows known cheat brand / project term", Severity.High, 78, 38);
+            AddDirectBrowserCheatTermRules(rules, "Browser History", "Browser history shows direct cheat term", Severity.High, 78, 38);
+            AddKnownCheatBrandRules(rules, "Browser History", "Browser history shows cheat brand / project term", Severity.High, 78, 38);
             AddGameSpecificCheatRules(rules, "Browser History", "Browser history shows game-specific cheat wording", Severity.High, 78, 38);
-            AddCheatDomainRules(rules, "Browser History", "Browser history shows cheat forum / provider domain", Severity.High, 80, 42);
+            AddCheatDomainRules(rules, "Browser History", "Browser history shows cheat site/domain", Severity.High, 80, 42);
             AddCheatFeatureExpansionRules(rules, "Browser History", "Browser history shows cheat feature / config term", Severity.High, 78, 38);
             AddCheatBuildAndSourceExpansionRules(rules, "Browser History", "Browser history shows cheat source / build / SDK term", Severity.High, 80, 42);
             AddInjectorKernelDriverExpansionRules(rules, "Browser History", "Browser history shows injector / mapper / driver term", Severity.High, 80, 42);
             AddSpooferCleanerExpansionRules(rules, "Browser History", "Browser history shows spoofer / cleaner / unban term", Severity.High, 80, 42);
             AddExternalHardwareAssistExpansionRules(rules, "Browser History", "Browser history shows hardware / input-assist cheat term", Severity.High, 76, 35);
-            AddProviderAndProjectExpansionRules(rules, "Browser History", "Browser history shows known cheat provider / project term", Severity.High, 78, 38);
+            AddProviderAndProjectExpansionRules(rules, "Browser History", "Browser history shows cheat provider / project term", Severity.High, 78, 38);
             AddLoaderExpansionRules(rules, "Browser History", "Browser history shows cheat loader / distribution term", Severity.High, 78, 38, false);
             AddGameSpecificExpansionRules(rules, "Browser History", "Browser history shows game-specific cheat term", Severity.High, 78, 38);
             AddSingleWordCheatTermRules(rules, "Browser History", "Possible cheat-related browser term", Severity.Medium, 60, 15, false);
@@ -476,15 +477,16 @@ namespace GamerIntegrity
             AddRules(rules, "Browser Source/Download Evidence", "Browser source/download shows DMA / external input-assist keyword", Severity.High, 76, 35,
                 @"dma cheat", @"dma radar", @"dma firmware", @"pcileech", @"memprocfs", @"leechcore", @"screamer pci", @"pcie squirrel", @"kmbox", @"km box", @"arduino aimbot", @"colorbot", @"pixelbot");
 
-            AddKnownCheatBrandRules(rules, "Browser Source/Download Evidence", "Browser source/download shows known cheat brand / project term", Severity.High, 78, 38);
+            AddDirectBrowserCheatTermRules(rules, "Browser Source/Download Evidence", "Browser source/download shows direct cheat term", Severity.High, 78, 38);
+            AddKnownCheatBrandRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat brand / project term", Severity.High, 78, 38);
             AddGameSpecificCheatRules(rules, "Browser Source/Download Evidence", "Browser source/download shows game-specific cheat wording", Severity.High, 78, 38);
-            AddCheatDomainRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat forum / provider domain", Severity.High, 80, 42);
+            AddCheatDomainRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat site/domain", Severity.High, 80, 42);
             AddCheatFeatureExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat feature / config term", Severity.High, 78, 38);
             AddCheatBuildAndSourceExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat source / build / SDK term", Severity.High, 80, 42);
             AddInjectorKernelDriverExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows injector / mapper / driver term", Severity.High, 80, 42);
             AddSpooferCleanerExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows spoofer / cleaner / unban term", Severity.High, 80, 42);
             AddExternalHardwareAssistExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows hardware / input-assist cheat term", Severity.High, 76, 35);
-            AddProviderAndProjectExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows known cheat provider / project term", Severity.High, 78, 38);
+            AddProviderAndProjectExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat provider / project term", Severity.High, 78, 38);
             AddLoaderExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows cheat loader / distribution term", Severity.High, 80, 42, true);
             AddGameSpecificExpansionRules(rules, "Browser Source/Download Evidence", "Browser source/download shows game-specific cheat term", Severity.High, 78, 38);
             AddSingleWordCheatTermRules(rules, "Browser Source/Download Evidence", "Possible cheat-related download/source term", Severity.Medium, 62, 18, true);
@@ -517,6 +519,16 @@ namespace GamerIntegrity
                 @"fivem cheat", @"fivem executor", @"fivem lua", @"lua executor", @"gta cheat", @"gta mod menu",
                 @"minecraft cheat", @"minecraft client", @"minecraft ghost client", @"minecraft autoclicker", @"autoclicker", @"auto clicker",
                 @"roblox executor", @"roblox exploit", @"roblox cheat", @"roblox script executor");
+        }
+
+        private static void AddDirectBrowserCheatTermRules(List<FileNameRule> rules, string category, string label, Severity severity, int confidence, int score)
+        {
+            AddRules(rules, category, label, severity, confidence, score,
+                @"cheat", @"cheats", @"hack", @"hacks", @"aimbot", @"aim bot", @"triggerbot", @"trigger bot", @"wallhack", @"wall hack",
+                @"esp", @"player esp", @"loot esp", @"chams", @"spinbot", @"ragebot", @"legitbot", @"silent aim",
+                @"bhop", @"bunnyhop", @"bunny hop", @"rcs", @"no recoil", @"norecoil", @"skin changer", @"skinchanger",
+                @"injector", @"dll injector", @"extreme injector", @"mapper", @"manual map", @"manual mapper", @"kdmapper", @"kd mapper",
+                @"driver mapper", @"kernel mapper", @"spoofer", @"hwid spoofer", @"bypass", @"unban", @"cheat engine", @"cheatengine");
         }
 
         private static void AddCheatDomainRules(List<FileNameRule> rules, string category, string label, Severity severity, int confidence, int score)
@@ -641,7 +653,6 @@ namespace GamerIntegrity
 
         private static void AddShortAcronymFileNameRules(List<FileNameRule> rules, string category, string label, Severity severity, int confidence, int score)
         {
-            // Short tokens are limited to filename/folder-style scans to reduce browser/history false positives.
             AddRules(rules, category, label, severity, confidence, score,
                 @"esp", @"rcs", @"fov", @"hvh", @"aa", @"bhop", @"w2s", @"rpm", @"wpm", @"r0", @"r3", @"km", @"um",
                 @"ring0", @"ring 0", @"ring-0", @"ring_0", @"radar", @"chams", @"resolver", @"backtrack", @"antiaim", @"glow", @"walls", @"trigger", @"rage", @"legit");
@@ -649,8 +660,6 @@ namespace GamerIntegrity
 
         private static void AddSingleWordCheatTermRules(List<FileNameRule> rules, string category, string label, Severity severity, int confidence, int score, bool includeRiskyStandaloneTerms)
         {
-            // These are intentionally grouped because one-word terms are useful but need careful review.
-            // Strong feature/tool words are applied normally. Broad words are added with lower score/confidence.
             AddRules(rules, category, label, severity, confidence, score,
                 @"aimbot", @"triggerbot", @"wallhack", @"ragebot", @"legitbot", @"spinbot", @"silentaim", @"aimlock", @"aimassist",
                 @"esp", @"radar", @"chams", @"snaplines", @"xray",

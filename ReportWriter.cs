@@ -188,6 +188,9 @@ namespace GamerIntegrity
                 Prop(sb, 2, "scanConfidence", assessment.ReportConfidence, true);
                 Prop(sb, 2, "rawSignalPoints", report.RawScore, true);
                 Prop(sb, 2, "findingCount", report.Findings.Count, true);
+                Prop(sb, 2, "cheatCriticalFindings", CountCheatCriticalFindings(report.Findings), true);
+                Prop(sb, 2, "severityCriticalFindings", report.Findings.Count(f => f.Severity == Severity.Critical), true);
+                Prop(sb, 2, "scanLimitations", report.Limitations.Count, true);
                 Prop(sb, 2, "fileNameMatches", fileMatches.Count, true);
                 Prop(sb, 2, "browserKeywordMatches", browserMatches.Count, true);
                 Prop(sb, 2, "browserSourceDownloadMatches", browserDownloadMatches.Count, true);
@@ -197,6 +200,7 @@ namespace GamerIntegrity
                 sb.Append(Indent(1)).AppendLine("},");
 
                 WriteFindingsJson(sb, report.Findings, r, true);
+                WriteScanLimitationsJson(sb, report.Limitations, r, true);
                 WriteFileMatchesJson(sb, "installedProgramMatches", installedForReport, r, true);
                 WriteFileMatchesJson(sb, "fileNameMatches", fileMatches, r, true);
                 WriteBrowserMatchesJson(sb, browserMatches, r, true);
@@ -242,7 +246,8 @@ namespace GamerIntegrity
                 var severityCounts = report.Findings
                     .GroupBy(f => f.Severity)
                     .ToDictionary(g => g.Key, g => g.Count());
-                int criticalCount = GetSeverityCount(severityCounts, Severity.Critical);
+                int severityCriticalCount = GetSeverityCount(severityCounts, Severity.Critical);
+                int cheatCriticalCount = CountCheatCriticalFindings(report.Findings);
                 int highCount = GetSeverityCount(severityCounts, Severity.High);
                 int mediumCount = GetSeverityCount(severityCounts, Severity.Medium);
                 int nonWindowsDrivers = drivers.Count(d => !d.WindowsSystemPath);
@@ -281,13 +286,15 @@ namespace GamerIntegrity
                 AppendMetricCard(sb, "Scan confidence", assessment.ReportConfidence + "%", "Confidence in this scan result");
                 AppendMetricCard(sb, "Points", report.RawScore.ToString(CultureInfo.InvariantCulture), "Uncapped internal value");
                 AppendMetricCard(sb, "Detections", report.Findings.Count.ToString(CultureInfo.InvariantCulture), "");
+                AppendMetricCard(sb, "Limitations", report.Limitations.Count.ToString(CultureInfo.InvariantCulture), "Failed/skipped reads");
                 AppendMetricCard(sb, "Generated", H(ScannerHelpers.CurrentLocalDisplayTimestamp()), "", "font-size:16px");
                 sb.AppendLine("</div>");
 
                 sb.AppendLine("<section id=\"scan-totals\" class=\"wiki-section\"><h2>Scan totals</h2><div class=\"grid\">");
-                AppendMetricCard(sb, "Critical findings", criticalCount.ToString(CultureInfo.InvariantCulture), "");
-                AppendMetricCard(sb, "High findings", highCount.ToString(CultureInfo.InvariantCulture), "");
-                AppendMetricCard(sb, "Medium findings", mediumCount.ToString(CultureInfo.InvariantCulture), "");
+                AppendMetricCard(sb, "Cheat-critical findings", cheatCriticalCount.ToString(CultureInfo.InvariantCulture), "Positive cheat/tool evidence categories");
+                AppendMetricCard(sb, "Critical severity findings", severityCriticalCount.ToString(CultureInfo.InvariantCulture), "Rows explicitly labeled Critical");
+                AppendMetricCard(sb, "High severity findings", highCount.ToString(CultureInfo.InvariantCulture), "");
+                AppendMetricCard(sb, "Medium severity findings", mediumCount.ToString(CultureInfo.InvariantCulture), "");
                 AppendMetricCard(sb, "Non-Windows loaded drivers", nonWindowsDrivers.ToString(CultureInfo.InvariantCulture), "Untrusted: " + untrustedNonWindowsDrivers);
                 AppendMetricCard(sb, "Hardware identity records", hardwareRecords.Count.ToString(CultureInfo.InvariantCulture), "SMBIOS / disks / MACs");
                 AppendMetricCard(sb, "External USB devices", deviceRecords.Count.ToString(CultureInfo.InvariantCulture), "USB / USB storage history");
@@ -300,6 +307,7 @@ namespace GamerIntegrity
                 AppendMetricCard(sb, "Source project groups", sourceProjects.Count.ToString(CultureInfo.InvariantCulture), "Grouped source/build projects");
                 sb.AppendLine("</div></section>");
 
+                WriteScanLimitationsHtml(sb, report.Limitations, r);
                 WriteTimelineHtml(sb, cheatingTimeline, r);
                 WriteScoreBreakdownHtml(sb, assessment);
                 WriteFindingsHtml(sb, ordered, r);
@@ -365,6 +373,25 @@ namespace GamerIntegrity
             catch { return string.Empty; }
         }
 
+        private static void WriteScanLimitationsJson(StringBuilder sb, List<ScanLimitation> limitations, Redactor r, bool comma)
+        {
+            limitations = limitations ?? new List<ScanLimitation>();
+            sb.Append(Indent(1)).AppendLine("\"scanLimitations\": [");
+            for (int i = 0; i < limitations.Count; i++)
+            {
+                var l = limitations[i];
+                sb.Append(Indent(2)).AppendLine("{");
+                Prop(sb, 3, "source", l.Source, true);
+                Prop(sb, 3, "scope", l.Scope, true);
+                Prop(sb, 3, "path", r.Path(l.Path), true);
+                Prop(sb, 3, "message", r.Text(l.Message), true);
+                Prop(sb, 3, "severity", l.Severity.ToString(), true);
+                Prop(sb, 3, "when", l.When, false);
+                sb.Append(Indent(2)).Append("}").AppendLine(i + 1 < limitations.Count ? "," : "");
+            }
+            sb.Append(Indent(1)).Append("]").AppendLine(comma ? "," : "");
+        }
+
         private static void WriteFindingsJson(StringBuilder sb, List<Finding> findings, Redactor r, bool comma)
         {
             sb.Append(Indent(1)).AppendLine("\"findings\": [");
@@ -418,6 +445,8 @@ namespace GamerIntegrity
                 Prop(sb, 3, "displayUrl", BrowserDisplayUrl(r.Text(m.Snippet)), true);
                 Prop(sb, 3, "displayTitle", BrowserDisplayTitle(r.Text(m.Snippet), BrowserDisplayUrl(r.Text(m.Snippet)), m.Token), true);
                 Prop(sb, 3, "snippet", r.Text(m.Snippet), true);
+                Prop(sb, 3, "when", m.When, true);
+                Prop(sb, 3, "timeType", m.TimeType, true);
                 Prop(sb, 3, "severity", m.Severity.ToString(), true);
                 Prop(sb, 3, "confidence", m.Confidence, true);
                 Prop(sb, 3, "score", m.Score, false);
@@ -432,7 +461,7 @@ namespace GamerIntegrity
             for (int i = 0; i < sources.Count; i++)
             {
                 var s = sources[i];
-                sb.Append(Indent(2)).Append("{\"browser\": \"").Append(J(s.Browser)).Append("\", \"profile\": \"").Append(J(s.Profile)).Append("\", \"historyPath\": \"").Append(J(r.Path(s.HistoryPath))).Append("\"}").AppendLine(i + 1 < sources.Count ? "," : "");
+                sb.Append(Indent(2)).Append("{\"browser\": \"").Append(J(s.Browser)).Append("\", \"profile\": \"").Append(J(s.Profile)).Append("\", \"storeType\": \"").Append(J(s.StoreType)).Append("\", \"historyPath\": \"").Append(J(r.Path(s.HistoryPath))).Append("\"}").AppendLine(i + 1 < sources.Count ? "," : "");
             }
             sb.Append(Indent(1)).Append("]").AppendLine(comma ? "," : "");
         }
@@ -615,6 +644,45 @@ namespace GamerIntegrity
             sb.Append(Indent(1)).Append("]").AppendLine(comma ? "," : "");
         }
 
+        internal static int CountCheatCriticalFindings(IEnumerable<Finding> findings)
+        {
+            if (findings == null) return 0;
+            return findings.Count(IsCheatCriticalFinding);
+        }
+
+        private static bool IsCheatCriticalFinding(Finding finding)
+        {
+            if (finding == null || finding.Score <= 0) return false;
+            string category = finding.Category ?? "";
+            switch (category)
+            {
+                case "File Name Scan":
+                case "Browser History":
+                case "Browser Source/Download Evidence":
+                case "Execution Evidence":
+                case "Runtime/Startup":
+                case "Source Projects":
+                    return true;
+                case "Installed Programs":
+                case "Drivers":
+                case "Cleanup Indicators":
+                    return FindingMentionsCheatTooling(finding);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool FindingMentionsCheatTooling(Finding finding)
+        {
+            string text = ((finding.Title ?? "") + " " + (finding.Details ?? "")).ToLowerInvariant();
+            string[] strongTokens =
+            {
+                "cheat", "trainer", "injector", "mapper", "kdmapper", "spoof", "spoofer", "cleaner", "unban",
+                "aimbot", "triggerbot", "wallhack", "esp", "radar", "rcs", "chams", "bypass", "unknowncheats"
+            };
+            return strongTokens.Any(t => text.Contains(t));
+        }
+
         private static void AppendMetricCard(StringBuilder sb, string label, string valueHtml, string note, string valueStyle = null)
         {
             sb.Append("<div class=\"card search-item\"><div class=\"metric-label\">").Append(H(label)).Append("</div><div class=\"metric-value\"");
@@ -638,6 +706,29 @@ namespace GamerIntegrity
         private static void AppendSeverityBadge(StringBuilder sb, Severity severity)
         {
             sb.Append("<span class=\"badge ").Append(ScannerHelpers.SeverityCssClass(severity)).Append("\">").Append(H(severity.ToString())).Append("</span>");
+        }
+
+        private static void WriteScanLimitationsHtml(StringBuilder sb, List<ScanLimitation> limitations, Redactor r)
+        {
+            limitations = limitations ?? new List<ScanLimitation>();
+            sb.AppendLine("<section id=\"scan-limitations\" class=\"wiki-section\"><details open><summary>Scan limitations / failed reads</summary>");
+            sb.AppendLine("<p class=\"small\">These rows explain sources that could not be fully read or were stopped by safety caps. They are not cheat detections by themselves, but they help reviewers understand scan coverage.</p>");
+            sb.AppendLine("<table><thead><tr><th>Severity</th><th>Source</th><th>Scope</th><th>Details</th></tr></thead><tbody>");
+            if (limitations.Count == 0)
+            {
+                sb.AppendLine("<tr><td colspan=\"4\">No failed reads or scan limitations were recorded.</td></tr>");
+            }
+            else
+            {
+                foreach (var l in limitations.OrderByDescending(x => x.Severity).ThenBy(x => x.Source).Take(250))
+                {
+                    sb.Append("<tr class=\"search-item\"><td><span class=\"badge ").Append(ScannerHelpers.SeverityCssClass(l.Severity)).Append("\">").Append(H(l.Severity.ToString())).Append("</span></td><td>").Append(H(l.Source)).Append("</td><td>").Append(H(l.Scope)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(l.Message))).Append("</div>");
+                    if (!string.IsNullOrWhiteSpace(l.Path)) sb.Append("<div class=\"mono small\">").Append(H(r.Path(l.Path))).Append("</div>");
+                    if (!string.IsNullOrWhiteSpace(l.When)) sb.Append("<div class=\"small\">Recorded: ").Append(H(ScannerHelpers.FriendlyTimestampText(l.When))).Append("</div>");
+                    sb.AppendLine("</td></tr>");
+                }
+            }
+            sb.AppendLine("</tbody></table></details></section>");
         }
 
         private static void WriteTimelineHtml(StringBuilder sb, List<CheatingTimelineEvent> items, Redactor r)
@@ -666,7 +757,7 @@ namespace GamerIntegrity
                         sb.Append("<tr class=\"search-item\"><td class=\"mono\">").Append(H(ScannerHelpers.FriendlyTimestampText(e.When))).Append("</td><td>");
                         AppendSeverityBadge(sb, e.Severity);
                         sb.Append("<br><span class=\"finding-title\">").Append(H(e.EventType)).Append("</span></td><td>").Append(H(e.Source)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(e.Summary))).Append("</div><div class=\"mono small\">").Append(H(r.Text(e.Evidence))).Append("</div>");
-                        if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Time basis: ").Append(H(e.TimeType)).Append("</div>");
+                        if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Time shown from: ").Append(H(e.TimeType)).Append("</div>");
                         sb.Append("</td><td>").Append(e.Confidence).AppendLine("%</td></tr>");
                     }
                     sb.AppendLine("</tbody></table></details>");
@@ -689,7 +780,7 @@ namespace GamerIntegrity
                     sb.Append("<tr class=\"search-item\"><td>");
                     AppendSeverityBadge(sb, e.Severity);
                     sb.Append("<br><span class=\"finding-title\">").Append(H(e.EventType)).Append("</span></td><td>").Append(H(e.Source)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(e.Summary))).Append("</div><div class=\"mono small\">").Append(H(r.Text(e.Evidence))).Append("</div>");
-                    if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Time basis: ").Append(H(e.TimeType)).Append("</div>");
+                    if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Time shown from: ").Append(H(e.TimeType)).Append("</div>");
                     sb.Append("</td><td>").Append(e.Confidence).AppendLine("%</td></tr>");
                 }
             }
@@ -925,8 +1016,8 @@ namespace GamerIntegrity
             sb.Append("</td><td>").Append(H(m.Browser)).Append("<br><span class=\"small\">").Append(H(m.Profile)).Append("</span></td><td>").Append(H(m.Token)).Append("<br><span class=\"small\">").Append(H(m.Label)).Append("</span></td><td>");
             if (!string.IsNullOrWhiteSpace(displayTitle)) sb.Append("<div class=\"finding-title\">").Append(H(displayTitle)).Append("</div>");
             else sb.Append("<div class=\"finding-title\">").Append(H(BrowserEvidenceLabel(m))).Append("</div>");
-            if (!string.IsNullOrWhiteSpace(m.When)) sb.Append("<div class=\"small\">Artifact time: ").Append(H(ScannerHelpers.FriendlyTimestampText(m.When))).Append("</div>");
-            else if (!string.IsNullOrWhiteSpace(m.TimeType)) sb.Append("<div class=\"small\">Time basis: ").Append(H(m.TimeType)).Append("</div>");
+            if (!string.IsNullOrWhiteSpace(m.When)) sb.Append("<div class=\"small\">Time found: ").Append(H(ScannerHelpers.FriendlyTimestampText(m.When))).Append("</div>");
+            else if (!string.IsNullOrWhiteSpace(m.TimeType)) sb.Append("<div class=\"small\">Time shown from: ").Append(H(m.TimeType)).Append("</div>");
             if (!string.IsNullOrWhiteSpace(domain)) sb.Append("<div>Domain: ").Append(H(domain)).Append("</div>");
             if (!string.IsNullOrWhiteSpace(displayUrl)) sb.Append("<div class=\"mono small\">").Append(download ? "Source URL: " : "URL: ").Append(H(displayUrl)).Append("</div>");
             if (download && !string.IsNullOrWhiteSpace(m.LocalPath)) sb.Append("<div class=\"mono small\">Local path: ").Append(H(r.Path(m.LocalPath))).Append("</div>");
@@ -980,9 +1071,9 @@ namespace GamerIntegrity
         {
             sb.AppendLine("<section id=\"browser-keywords\" class=\"wiki-section\"><details><summary>Browser/domain keyword detections</summary>");
             sb.AppendLine("<p class=\"small\">This lists supported browser history stores and cleaned keyword-hit records. Raw browser database context is kept behind the expandable row detail.</p>");
-            sb.AppendLine("<table><thead><tr><th>Browser</th><th>Profile</th><th>Local history database</th></tr></thead><tbody>");
-            if (sources.Count == 0) AppendEmptyRow(sb, 3, "No supported browser history stores were detected.");
-            else foreach (var src in sources) sb.Append("<tr class=\"search-item\"><td>").Append(H(src.Browser)).Append("</td><td>").Append(H(src.Profile)).Append("</td><td class=\"mono\">").Append(H(r.Path(src.HistoryPath))).AppendLine("</td></tr>");
+            sb.AppendLine("<table><thead><tr><th>Browser</th><th>Profile</th><th>Store</th><th>Local history database</th></tr></thead><tbody>");
+            if (sources.Count == 0) AppendEmptyRow(sb, 4, "No supported browser history stores were detected.");
+            else foreach (var src in sources) sb.Append("<tr class=\"search-item\"><td>").Append(H(src.Browser)).Append("</td><td>").Append(H(src.Profile)).Append("</td><td>").Append(H(src.StoreType)).Append("</td><td class=\"mono\">").Append(H(r.Path(src.HistoryPath))).AppendLine("</td></tr>");
             sb.AppendLine("</tbody></table>");
             sb.AppendLine("<table><thead><tr><th>Severity</th><th>Browser profile</th><th>Keyword</th><th>Matched page/search</th><th>Confidence</th></tr></thead><tbody>");
             if (matches.Count == 0)

@@ -13,9 +13,9 @@
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationIcon>logo.ico</ApplicationIcon>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>1.0.3</Version>
-    <AssemblyVersion>1.0.3.0</AssemblyVersion>
-    <FileVersion>1.0.3.0</FileVersion>
+    <Version>1.0.4</Version>
+    <AssemblyVersion>1.0.4.0</AssemblyVersion>
+    <FileVersion>1.0.4.0</FileVersion>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- Broad Windows build: do not pin a specific Windows SDK version.
          Published builds are self-contained single EXEs so players do not need the .NET Desktop Runtime installed separately. -->
@@ -37,6 +37,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <PackageReference Include="System.Management" Version="10.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
   </ItemGroup>

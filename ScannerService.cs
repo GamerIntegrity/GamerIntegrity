@@ -14,11 +14,7 @@ namespace GamerIntegrity
 {
     public static class ScannerService
     {
-        private const int MaxFileNameMatches = 2500;
-        private const int MaxScannedFileSystemEntries = 250000;
         private const int MaxHistoryBytes = 96 * 1024 * 1024;
-        private const int MaxSingleCachedBrowserHistoryChars = 16 * 1024 * 1024;
-        private const int MaxTotalCachedBrowserHistoryChars = 48 * 1024 * 1024;
 
         public static ScanResult Run(ScanOptions options, IProgress<ScanProgress> progress)
         {
@@ -48,7 +44,6 @@ namespace GamerIntegrity
             var browserHistorySources = new List<BrowserHistorySource>();
             var executionArtifacts = new List<ExecutionArtifact>();
             var browserDownloadMatches = new List<BrowserDownloadMatch>();
-            var browserHistoryContentCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var runtimeArtifacts = new List<RuntimeArtifact>();
             var sourceProjects = new List<SourceProjectSummary>();
             var cheatingTimeline = new List<CheatingTimelineEvent>();
@@ -98,20 +93,21 @@ namespace GamerIntegrity
                 CollectExternalDeviceInfo(report, deviceRecords);
                 Notify(progress, 86, "USB history check complete: " + deviceRecords.Count + " device record(s) captured.");
 
-                Notify(progress, 88, "Checking local browser history for cheat/provider leads...");
-                browserMatches = ScanBrowserHistoryKeywords(report, browserHistorySources, browserHistoryContentCache);
-                Notify(progress, 90, "Browser history check complete: " + browserMatches.Count + " keyword detection(s) across " + browserHistorySources.Count + " detected profile(s).");
-
-                Notify(progress, 91, "Checking browser download/source records...");
-                browserDownloadMatches = ScanBrowserDownloadEvidence(report, browserHistorySources, browserHistoryContentCache);
-                Notify(progress, 92, "Browser download/source check complete: " + browserDownloadMatches.Count + " record(s).");
+                Notify(progress, 88, "Checking local browser SQLite history and download records...");
+                var browserScan = BrowserScanner.Scan(report);
+                browserHistorySources = browserScan.Sources;
+                browserMatches = browserScan.HistoryMatches;
+                browserDownloadMatches = browserScan.DownloadMatches;
+                Notify(progress, 92, "Browser SQLite check complete: " + browserMatches.Count + " keyword detection(s), " + browserDownloadMatches.Count + " source/download record(s), " + browserHistorySources.Count + " profile(s).");
 
                 if (options.IncludeFileNameScan)
                 {
                     Notify(progress, 93, "Checking common user folders for cheat/source/build names...");
-                    fileMatches = ScanScopedFileNames(report);
+                    fileMatches = FileSystemEvidenceScanner.ScanScopedFileNames(report);
                     Notify(progress, 95, "Files and folders check complete: " + fileMatches.Count + " match(es).");
                 }
+
+                AddScanLimitationsSummary(report);
 
                 Notify(progress, 96, "Grouping related evidence and building the timeline...");
                 sourceProjects = AnalyzeSourceProjects(report, fileMatches, executionArtifacts, runtimeArtifacts);
@@ -1303,351 +1299,17 @@ namespace GamerIntegrity
             return ScannerHelpers.RegistryFileTimeValueToString(defaultValue);
         }
 
-        private static string ReadBrowserHistoryContent(BrowserHistorySource source, Dictionary<string, string> cache)
+        private static void AddScanLimitationsSummary(ScanReport report)
         {
-            if (source == null || string.IsNullOrWhiteSpace(source.HistoryPath)) return "";
-
-            string key = source.HistoryPath;
-            string cached;
-            if (cache != null && cache.TryGetValue(key, out cached)) return cached;
-
-            string data = ReadBinaryAsText(key, MaxHistoryBytes);
-            if (cache != null && data.Length > 0 && data.Length <= MaxSingleCachedBrowserHistoryChars)
-            {
-                int currentChars = 0;
-                foreach (string value in cache.Values) currentChars += value == null ? 0 : value.Length;
-                if (currentChars + data.Length <= MaxTotalCachedBrowserHistoryChars) cache[key] = data;
-            }
-
-            return data;
+            if (report == null || report.Limitations.Count == 0) return;
+            var grouped = report.Limitations
+                .GroupBy(l => string.IsNullOrWhiteSpace(l.Source) ? "Unknown" : l.Source)
+                .Select(g => g.Key + ": " + g.Count())
+                .Take(8);
+            string sample = string.Join("\n", report.Limitations.Take(12).Select(l => "- " + (string.IsNullOrWhiteSpace(l.Source) ? "Scan" : l.Source) + " / " + (string.IsNullOrWhiteSpace(l.Scope) ? "General" : l.Scope) + ": " + l.Message + (string.IsNullOrWhiteSpace(l.Path) ? "" : " | " + l.Path)));
+            string details = "Some data sources could not be fully read. This does not mean evidence was found; it means the reviewer should understand what was incomplete. Groups: " + string.Join(", ", grouped) + ".\n" + sample;
+            report.AddFinding("Scan Limitations", "Some scan sources were incomplete", details, Severity.Low, 70, 0);
         }
-
-        private static List<BrowserHistoryMatch> ScanBrowserHistoryKeywords(ScanReport report, List<BrowserHistorySource> outSources, Dictionary<string, string> browserHistoryContentCache)
-        {
-            var sources = DiscoverBrowserHistorySources();
-            outSources.AddRange(sources);
-            var matches = new List<BrowserHistoryMatch>();
-            var rules = Rules.BrowserHistoryRules();
-
-            foreach (var source in sources)
-            {
-                string data = ReadBrowserHistoryContent(source, browserHistoryContentCache);
-                if (data.Length == 0) continue;
-                string lower = data.ToLowerInvariant();
-                foreach (var rule in rules)
-                {
-                    foreach (string variant in BrowserSearchVariants(rule.Token))
-                    {
-                        int pos = lower.IndexOf(variant.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
-                        if (pos < 0) continue;
-                        string snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(data, pos, variant.Length));
-                        FileNameRule adjustedRule = AdjustRuleForEvidenceContext(rule, snippet, "BrowserHistory");
-                        if (adjustedRule == null) continue;
-                        matches.Add(new BrowserHistoryMatch
-                        {
-                            Browser = source.Browser,
-                            Profile = source.Profile,
-                            HistoryPath = source.HistoryPath,
-                            Token = adjustedRule.Token,
-                            Label = adjustedRule.Label,
-                            Snippet = snippet,
-                            Severity = adjustedRule.Severity,
-                            Confidence = adjustedRule.Confidence,
-                            Score = adjustedRule.Score
-                        });
-                        break;
-                    }
-                }
-            }
-            DeduplicateBrowserMatches(matches);
-            ScannerHelpers.SortEvidence(matches, m => m.Score, m => m.Confidence, m => m.Severity);
-            if (matches.Count > 0)
-            {
-                var sample = string.Join("\n", matches.Take(12).Select(m => "- " + m.Browser + " " + m.Profile + ": " + m.Token + " [" + m.Label + "]"));
-                report.AddFinding("Browser History", "Browser/domain keyword detections found", sample, matches.Max(m => m.Severity), Math.Min(95, matches.Max(m => m.Confidence)), Math.Min(160, matches.Sum(m => m.Score)));
-            }
-            else report.AddFinding("Browser History", "No browser/domain keyword detections found", "Detected browser profiles were scanned for local keyword/domain indicators. Profiles found: " + sources.Count + ".", Severity.Info, 60, 0);
-            return matches;
-        }
-
-        private static List<BrowserDownloadMatch> ScanBrowserDownloadEvidence(ScanReport report, List<BrowserHistorySource> sources, Dictionary<string, string> browserHistoryContentCache)
-        {
-            var matches = new List<BrowserDownloadMatch>();
-            var rules = Rules.BrowserDownloadRules();
-            if (sources.Count == 0) sources = DiscoverBrowserHistorySources();
-            foreach (var source in sources)
-            {
-                string data = ReadBrowserHistoryContent(source, browserHistoryContentCache);
-                if (data.Length == 0) continue;
-                string lower = data.ToLowerInvariant();
-                foreach (var rule in rules)
-                {
-                    int pos = lower.IndexOf(rule.Token.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase);
-                    if (pos < 0) continue;
-                    string snippet = ScannerHelpers.CollapseWhitespaceForDisplay(Snippet(data, pos, rule.Token.Length));
-                    string url = ExtractBestUrl(snippet, rule.Token);
-                    string local = ExtractFirstWindowsPath(snippet);
-                    string evidenceKind = string.IsNullOrWhiteSpace(local) ? "BrowserSource" : "BrowserDownloadLocal";
-                    FileNameRule adjustedRule = AdjustRuleForEvidenceContext(rule, url + " " + local + " " + snippet, evidenceKind);
-                    if (adjustedRule == null) continue;
-                    var match = new BrowserDownloadMatch
-                    {
-                        Browser = source.Browser,
-                        Profile = source.Profile,
-                        HistoryPath = source.HistoryPath,
-                        Token = adjustedRule.Token,
-                        Label = adjustedRule.Label,
-                        Url = url,
-                        Domain = DomainFromUrl(url),
-                        LocalPath = local,
-                        EvidenceType = string.IsNullOrWhiteSpace(local) ? "source/history snippet" : "download/local path",
-                        Snippet = snippet,
-                        When = ScannerHelpers.FileTimeString(source.HistoryPath),
-                        TimeType = "History DB last modified",
-                        Severity = adjustedRule.Severity,
-                        Confidence = string.IsNullOrWhiteSpace(local) ? Math.Max(45, adjustedRule.Confidence - 8) : adjustedRule.Confidence,
-                        Score = string.IsNullOrWhiteSpace(local) ? Math.Max(5, adjustedRule.Score - 8) : adjustedRule.Score
-                    };
-                    if (!IsKnownBenignBrowserDownloadMatch(match)) matches.Add(match);
-                }
-            }
-            DeduplicateBrowserDownloads(matches);
-            ScannerHelpers.SortEvidence(matches, m => m.Score, m => m.Confidence, m => m.Severity);
-            if (matches.Count > 0)
-            {
-                var sample = string.Join("\n", matches.Take(12).Select(m => "- " + m.Browser + " " + m.Profile + ": " + m.Token + " | " + (string.IsNullOrWhiteSpace(m.Url) ? m.LocalPath : m.Url)));
-                report.AddFinding("Browser Source/Download Evidence", "Browser source/download evidence found", sample, matches.Max(m => m.Severity), Math.Min(95, matches.Max(m => m.Confidence)), Math.Min(160, matches.Sum(m => m.Score)));
-            }
-            else report.AddFinding("Browser Source/Download Evidence", "No browser source/download evidence found", "Browser history databases were checked for source, download, URL, and local-path traces.", Severity.Info, 60, 0);
-            return matches;
-        }
-
-        private static bool IsKnownBenignBrowserDownloadMatch(BrowserDownloadMatch match)
-        {
-            string domain = ScannerHelpers.ToLowerSafe(match.Domain);
-            string url = ScannerHelpers.ToLowerSafe(match.Url);
-            string local = ScannerHelpers.ToLowerSafe(match.LocalPath);
-            string file = ScannerHelpers.ToLowerSafe(ScannerHelpers.GetFileNameOnly(match.LocalPath));
-            string token = ScannerHelpers.ToLowerSafe(match.Token);
-            bool microsoftDomain = domain == "microsoft.com" || domain == "www.microsoft.com" || domain == "download.microsoft.com" || domain == "aka.ms" || domain.EndsWith(".microsoft.com", StringComparison.OrdinalIgnoreCase);
-            if (microsoftDomain && (file.Contains("vcredist") || file.Contains("directx") || file.Contains("dxwebsetup") || file.Contains("dotnet"))) return true;
-            if ((token == "loader" || token == "cheat.com" || token == "cheats.com") && microsoftDomain && !ContainsAnySuspiciousBrowserToken(url + " " + local)) return true;
-            return false;
-        }
-
-        private static bool ContainsAnySuspiciousBrowserToken(string value)
-        {
-            string v = ScannerHelpers.ToLowerSafe(value);
-            string[] tokens = { "unknowncheats", "elitepvpers", "aimbot", "triggerbot", "wallhack", "ragebot", "silent aim", "esp", "kdmapper", "driver mapper", "injector", "spoofer", "hwid", "bypass", "dma", "dnspy", "ida", "x64dbg", "wemod", "cosmocheats", "kernaim", "disconnectcheats", "lethality", "evicted" };
-            return tokens.Any(t => v.Contains(t));
-        }
-
-        private static List<BrowserHistorySource> DiscoverBrowserHistorySources()
-        {
-            var sources = new List<BrowserHistorySource>();
-            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            AddChromiumHistorySources(sources, "Chrome", Path.Combine(local, @"Google\Chrome\User Data"));
-            AddChromiumHistorySources(sources, "Chrome Beta", Path.Combine(local, @"Google\Chrome Beta\User Data"));
-            AddChromiumHistorySources(sources, "Chrome Dev", Path.Combine(local, @"Google\Chrome Dev\User Data"));
-            AddChromiumHistorySources(sources, "Chrome Canary", Path.Combine(local, @"Google\Chrome SxS\User Data"));
-            AddChromiumHistorySources(sources, "Edge", Path.Combine(local, @"Microsoft\Edge\User Data"));
-            AddChromiumHistorySources(sources, "Edge Beta", Path.Combine(local, @"Microsoft\Edge Beta\User Data"));
-            AddChromiumHistorySources(sources, "Edge Dev", Path.Combine(local, @"Microsoft\Edge Dev\User Data"));
-            AddChromiumHistorySources(sources, "Edge Canary", Path.Combine(local, @"Microsoft\Edge SxS\User Data"));
-            AddChromiumHistorySources(sources, "Brave", Path.Combine(local, @"BraveSoftware\Brave-Browser\User Data"));
-            AddChromiumHistorySources(sources, "Vivaldi", Path.Combine(local, @"Vivaldi\User Data"));
-            AddChromiumHistorySources(sources, "Opera", Path.Combine(roaming, @"Opera Software\Opera Stable"));
-            AddChromiumHistorySources(sources, "Opera GX", Path.Combine(roaming, @"Opera Software\Opera GX Stable"));
-            AddFirefoxHistorySources(sources, Path.Combine(roaming, @"Mozilla\Firefox\Profiles"));
-            return sources;
-        }
-
-        private static void AddChromiumHistorySources(List<BrowserHistorySource> sources, string browser, string baseDir)
-        {
-            if (!Directory.Exists(baseDir)) return;
-            foreach (string profile in SafeEnumerateDirectories(baseDir).Take(100))
-            {
-                string name = Path.GetFileName(profile);
-                string history = Path.Combine(profile, "History");
-                if (!File.Exists(history)) continue;
-                if (!name.Equals("Default", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("Profile", StringComparison.OrdinalIgnoreCase) && !name.Equals("Guest Profile", StringComparison.OrdinalIgnoreCase) && !name.Equals("Opera Stable", StringComparison.OrdinalIgnoreCase) && !name.Equals("Opera GX Stable", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Keep only real profile folders by requiring a Chromium History database in the folder.
-                }
-                sources.Add(new BrowserHistorySource { Browser = browser, Profile = name, HistoryPath = history });
-            }
-            string direct = Path.Combine(baseDir, "History");
-            if (File.Exists(direct) && !sources.Any(s => s.HistoryPath.Equals(direct, StringComparison.OrdinalIgnoreCase)))
-                sources.Add(new BrowserHistorySource { Browser = browser, Profile = Path.GetFileName(baseDir), HistoryPath = direct });
-        }
-
-        private static void AddFirefoxHistorySources(List<BrowserHistorySource> sources, string baseDir)
-        {
-            if (!Directory.Exists(baseDir)) return;
-            foreach (string profile in SafeEnumerateDirectories(baseDir).Take(100))
-            {
-                string history = Path.Combine(profile, "places.sqlite");
-                if (File.Exists(history)) sources.Add(new BrowserHistorySource { Browser = "Firefox", Profile = Path.GetFileName(profile), HistoryPath = history });
-            }
-        }
-
-        private static List<string> BrowserSearchVariants(string token)
-        {
-            var variants = new List<string> { token };
-            if (token.Contains(" "))
-            {
-                variants.Add(token.Replace(" ", "+"));
-                variants.Add(token.Replace(" ", "%20"));
-                variants.Add(token.Replace(" ", "-"));
-                variants.Add(token.Replace(" ", "_"));
-                variants.Add(token.Replace(" ", ""));
-            }
-            return variants.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        }
-
-        private static void DeduplicateBrowserMatches(List<BrowserHistoryMatch> matches)
-        {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = matches.Count - 1; i >= 0; i--)
-            {
-                string key = matches[i].Browser + "|" + matches[i].Profile + "|" + matches[i].Token + "|" + matches[i].Snippet;
-                if (!seen.Add(key)) matches.RemoveAt(i);
-            }
-        }
-
-        private static void DeduplicateBrowserDownloads(List<BrowserDownloadMatch> matches)
-        {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = matches.Count - 1; i >= 0; i--)
-            {
-                string key = matches[i].Browser + "|" + matches[i].Profile + "|" + matches[i].Token + "|" + matches[i].Url + "|" + matches[i].LocalPath;
-                if (!seen.Add(key)) matches.RemoveAt(i);
-            }
-        }
-
-        private static List<FileNameMatch> ScanScopedFileNames(ScanReport report)
-        {
-            var roots = BuildScanRoots();
-            var rules = Rules.FileNameRules();
-            var matches = new List<FileNameMatch>();
-            int seen = 0;
-            foreach (string root in roots)
-            {
-                foreach (string entry in SafeEnumerateFileSystemEntries(root))
-                {
-                    if (++seen > MaxScannedFileSystemEntries || matches.Count >= MaxFileNameMatches) break;
-                    string name = Path.GetFileName(entry);
-                    var best = BestRuleMatch(name, rules);
-                    best = AdjustRuleForEvidenceContext(best, entry, "FileName");
-                    if (best == null) continue;
-                    if (IsLikelyBenignFileNameMatch(entry, best)) continue;
-                    matches.Add(new FileNameMatch
-                    {
-                        Path = entry,
-                        Token = best.Token,
-                        Category = best.Category,
-                        Label = best.Label,
-                        Severity = best.Severity,
-                        Confidence = best.Confidence,
-                        Score = best.Score,
-                        LastWriteTime = ScannerHelpers.EntryLastWriteTimeString(entry)
-                    });
-                }
-                if (seen > MaxScannedFileSystemEntries || matches.Count >= MaxFileNameMatches) break;
-            }
-            ScannerHelpers.SortEvidence(matches, m => m.Score, m => m.Confidence, m => m.Severity);
-            if (matches.Count > 0)
-            {
-                var sample = string.Join("\n", matches.Take(16).Select(m => "- " + m.Label + ": " + m.Path));
-                report.AddFinding("File Name Scan", "File/folder name detections found", sample, matches.Max(m => m.Severity), Math.Min(95, matches.Max(m => m.Confidence)), Math.Min(125, matches.Sum(m => m.Score)));
-            }
-            else report.AddFinding("File Name Scan", "No scoped file/folder name detections found", "Common user, developer, and download locations were checked against the local indicator list.", Severity.Info, 65, 0);
-            return matches;
-        }
-
-        private static List<string> BuildScanRoots()
-        {
-            var roots = new List<string>();
-            Action<string> add = p => { if (!string.IsNullOrWhiteSpace(p) && Directory.Exists(p) && !roots.Contains(p, StringComparer.OrdinalIgnoreCase)) roots.Add(p); };
-            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            add(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
-            add(Path.Combine(userProfile, "Downloads"));
-            add(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
-            add(Path.Combine(userProfile, "source"));
-            add(Path.Combine(userProfile, "repos"));
-            add(Path.Combine(userProfile, "Projects"));
-            add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
-            add(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
-            add(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
-            // Do not broad-scan Program Files / WindowsApps. Those folders produce many normal vendor and framework keyword hits.
-            return roots;
-        }
-
-        private static IEnumerable<string> SafeEnumerateFileSystemEntries(string root)
-        {
-            var pending = new Stack<string>();
-            if (!string.IsNullOrWhiteSpace(root)) pending.Push(root);
-
-            while (pending.Count > 0)
-            {
-                string dir = pending.Pop();
-                if (ShouldSkipDirectory(dir)) continue;
-
-                foreach (string f in SafeEnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly))
-                {
-                    yield return f;
-                }
-
-                foreach (string d in SafeEnumerateDirectories(dir))
-                {
-                    yield return d;
-                    if (!ShouldSkipDirectory(d)) pending.Push(d);
-                }
-            }
-        }
-
-        private static bool ShouldSkipDirectory(string path)
-        {
-            string lower = ScannerHelpers.ToLowerSafe(path);
-            string name = ScannerHelpers.ToLowerSafe(Path.GetFileName(path));
-            if (name == "node_modules" || name == ".git" || name == ".vs" || name == "packages" || name == "obj" || name == "temp" || name == "cache") return true;
-            if (lower.Contains(@"\windowsapps\") || lower.Contains(@"\program files\windowsapps")) return true;
-            if (lower.Contains(@"\windows defender advanced threat protection\") || lower.Contains(@"\microsoft\windows defender\")) return true;
-            if (lower.Contains(@"\gamerintegrity_wpf_") || lower.Contains(@"\gamerintegrity\release\reports\")) return true;
-            return false;
-        }
-
-        private static bool IsLikelyBenignFileNameMatch(string path, FileNameRule rule)
-        {
-            string lower = ScannerHelpers.ToLowerSafe(path);
-            string fileName = ScannerHelpers.ToLowerSafe(Path.GetFileName(path));
-            string token = ScannerHelpers.ToLowerSafe(rule == null ? "" : rule.Token);
-            if (token.Equals("loader", StringComparison.OrdinalIgnoreCase) && (lower.Contains("bootloader") || lower.Contains("classloader"))) return true;
-            if (token.Equals("cleaner", StringComparison.OrdinalIgnoreCase) && (lower.Contains("disk cleanup") || lower.Contains("ccleaner browser"))) return true;
-            if (lower.Contains(@"\program files\windowsapps\") || lower.Contains(@"\program files (x86)\windowsapps\")) return true;
-            if (lower.Contains(@"\windows defender advanced threat protection\") || lower.Contains(@"\microsoft\windows defender\")) return true;
-            if (lower.Contains("wingetdownloader.exe") || lower.Contains("sensesampleuploader.exe")) return true;
-            if (lower.Contains("gamerintegrity_wpf_v") && lower.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return true;
-            if ((token == "trace" || token == "traces") && lower.Contains("gamerintegrity")) return true;
-            if (IsSourceFileNameToken(token) && !fileName.EndsWith(token, StringComparison.OrdinalIgnoreCase)) return true;
-            if (IsCommonAssetOrWebFile(fileName) && IsSourceFileNameToken(token)) return true;
-            if ((token == "radar" || token == "radar.h") && Regex.IsMatch(lower, @"\b(charts?|dashboard|graph|analytics)[-_]?radar\.(html|js|css)$", RegexOptions.IgnoreCase)) return true;
-            return false;
-        }
-
-        private static bool IsSourceFileNameToken(string token)
-        {
-            if (string.IsNullOrWhiteSpace(token)) return false;
-            return Regex.IsMatch(token, @"\.(h|hpp|cpp|cxx|cc|cs|lua|py|json)$", RegexOptions.IgnoreCase);
-        }
-
-        private static bool IsCommonAssetOrWebFile(string fileName)
-        {
-            if (string.IsNullOrWhiteSpace(fileName)) return false;
-            return Regex.IsMatch(fileName, @"\.(png|jpg|jpeg|gif|webp|ico|svg|html|htm|css)$", RegexOptions.IgnoreCase);
-        }
-
 
         private static List<SourceProjectSummary> AnalyzeSourceProjects(ScanReport report, List<FileNameMatch> fileMatches, List<ExecutionArtifact> executionArtifacts, List<RuntimeArtifact> runtimeArtifacts)
         {
@@ -1859,13 +1521,59 @@ namespace GamerIntegrity
         private static List<CheatingTimelineEvent> BuildCheatingTimeline(List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserDownloadMatch> browserDownloads, List<ExecutionArtifact> executionArtifacts, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects)
         {
             var events = new List<CheatingTimelineEvent>();
-            foreach (var e in executionArtifacts.Take(200)) events.Add(new CheatingTimelineEvent { When = e.When, EventType = "Execution trace", Source = e.Source, Summary = e.Label, Evidence = e.Path + " " + e.Details, TimeType = "Artifact timestamp", Severity = e.Severity, Confidence = e.Confidence });
+            foreach (var e in executionArtifacts.Take(200)) events.Add(new CheatingTimelineEvent { When = e.When, EventType = "Launch trace", Source = e.Source, Summary = e.Label, Evidence = e.Path + " " + e.Details, TimeType = "Windows launch trace time", Severity = e.Severity, Confidence = e.Confidence });
             foreach (var d in browserDownloads.Take(200)) events.Add(new CheatingTimelineEvent { When = d.When, EventType = "Browser evidence", Source = d.Browser + " " + d.Profile, Summary = d.Label, Evidence = string.IsNullOrWhiteSpace(d.Url) ? d.Snippet : d.Url, TimeType = d.TimeType, Severity = d.Severity, Confidence = d.Confidence });
-            foreach (var f in fileMatches.Where(f => !string.IsNullOrWhiteSpace(f.LastWriteTime)).Take(200)) events.Add(new CheatingTimelineEvent { When = f.LastWriteTime, EventType = "File/folder detection", Source = "File system", Summary = f.Label, Evidence = f.Path, TimeType = "Last write time", Severity = f.Severity, Confidence = f.Confidence });
-            foreach (var b in browserMatches.Take(100)) events.Add(new CheatingTimelineEvent { When = ScannerHelpers.FileTimeString(b.HistoryPath), EventType = "Browser keyword lead", Source = b.Browser + " " + b.Profile, Summary = b.Label, Evidence = b.Snippet, TimeType = "History DB last modified", Severity = b.Severity, Confidence = b.Confidence });
-            foreach (var p in sourceProjects.Take(50)) events.Add(new CheatingTimelineEvent { When = LatestSampleTime(p.Samples), EventType = "Source/build group", Source = "File system grouping", Summary = p.Determination, Evidence = p.Root, TimeType = "Latest sample last write time", Severity = p.MaxSeverity, Confidence = p.MaxConfidence });
+            foreach (var f in fileMatches.Where(f => !string.IsNullOrWhiteSpace(f.LastWriteTime)).Take(200)) events.Add(new CheatingTimelineEvent { When = f.LastWriteTime, EventType = "File/folder detection", Source = "File system", Summary = f.Label, Evidence = f.Path, TimeType = "File last changed", Severity = f.Severity, Confidence = f.Confidence });
+            foreach (var b in browserMatches.Take(100)) events.Add(new CheatingTimelineEvent { When = string.IsNullOrWhiteSpace(b.When) ? ScannerHelpers.FileTimeString(b.HistoryPath) : b.When, EventType = "Browser keyword lead", Source = b.Browser + " " + b.Profile, Summary = b.Label, Evidence = b.Snippet, TimeType = string.IsNullOrWhiteSpace(b.TimeType) ? "Browser history file time" : b.TimeType, Severity = b.Severity, Confidence = b.Confidence });
+            foreach (var p in sourceProjects.Take(50)) events.Add(new CheatingTimelineEvent { When = LatestSampleTime(p.Samples), EventType = "Source/build group", Source = "File system grouping", Summary = p.Determination, Evidence = p.Root, TimeType = "Newest project file time", Severity = p.MaxSeverity, Confidence = p.MaxConfidence });
+            events = MergeDuplicateBrowserTimelineEvents(events);
             events.Sort((a, b) => string.Compare(b.When, a.When, StringComparison.OrdinalIgnoreCase));
             return events.Take(500).ToList();
+        }
+
+        private static List<CheatingTimelineEvent> MergeDuplicateBrowserTimelineEvents(List<CheatingTimelineEvent> events)
+        {
+            var output = new List<CheatingTimelineEvent>();
+            var browserGroups = events.Where(IsBrowserTimelineEvent).GroupBy(e => e.Source + "|" + e.When + "|" + BrowserTimelineEvidenceKey(e.Evidence), StringComparer.OrdinalIgnoreCase);
+            output.AddRange(events.Where(e => !IsBrowserTimelineEvent(e)));
+            foreach (var group in browserGroups)
+            {
+                var items = group.ToList();
+                var best = items.OrderByDescending(e => e.Severity).ThenByDescending(e => e.Confidence).First();
+                best.EventType = "Browser evidence";
+                best.Summary = CombineTimelineReasons(items.Select(e => e.Summary));
+                best.TimeType = CombineTimelineValues(items.Select(e => e.TimeType));
+                best.Severity = items.Max(e => e.Severity);
+                best.Confidence = items.Max(e => e.Confidence);
+                output.Add(best);
+            }
+            return output;
+        }
+
+        private static bool IsBrowserTimelineEvent(CheatingTimelineEvent item)
+        {
+            return item != null && item.EventType.StartsWith("Browser", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string BrowserTimelineEvidenceKey(string evidence)
+        {
+            string value = evidence ?? "";
+            int index = value.IndexOf(" | ", StringComparison.Ordinal);
+            if (index > 0) value = value.Substring(0, index);
+            return ScannerHelpers.ToLowerSafe(value.Trim());
+        }
+
+        private static string CombineTimelineReasons(IEnumerable<string> values)
+        {
+            var reasons = (values ?? Enumerable.Empty<string>()).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToList();
+            if (reasons.Count == 0) return "Browser evidence";
+            if (reasons.Count == 1) return reasons[0];
+            return "Multiple browser signals: " + string.Join("; ", reasons);
+        }
+
+        private static string CombineTimelineValues(IEnumerable<string> values)
+        {
+            return string.Join("; ", (values ?? Enumerable.Empty<string>()).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(4));
         }
 
         private static string LatestSampleTime(IEnumerable<string> paths)
@@ -1897,7 +1605,8 @@ namespace GamerIntegrity
             sb.AppendLine("Signal strength: " + assessment.NormalizedScore + "/100");
             sb.AppendLine("Scan confidence: " + assessment.ReportConfidence + "%");
             sb.AppendLine("Raw signal points: " + report.RawScore);
-            sb.AppendLine("Detected flags: " + report.Findings.Count + " total | Critical: " + report.Findings.Count(f => f.Severity == Severity.Critical) + " | High: " + report.Findings.Count(f => f.Severity == Severity.High) + " | Medium: " + report.Findings.Count(f => f.Severity == Severity.Medium));
+            sb.AppendLine("Detected flags: " + report.Findings.Count + " total | Cheat-critical: " + ReportWriter.CountCheatCriticalFindings(report.Findings) + " | Critical severity: " + report.Findings.Count(f => f.Severity == Severity.Critical) + " | High severity: " + report.Findings.Count(f => f.Severity == Severity.High) + " | Medium severity: " + report.Findings.Count(f => f.Severity == Severity.Medium));
+            sb.AppendLine("Scan limitations / failed reads: " + report.Limitations.Count);
             sb.AppendLine("Hardware records: " + hardwareRecords.Count);
             sb.AppendLine("External USB devices: " + deviceRecords.Count);
             sb.AppendLine("File/folder name hits: " + fileMatches.Count);
@@ -1913,22 +1622,24 @@ namespace GamerIntegrity
             return sb.ToString();
         }
 
-        private static FileNameRule AdjustRuleForEvidenceContext(FileNameRule rule, string evidenceValue, string evidenceKind)
+        internal static FileNameRule AdjustRuleForEvidenceContext(FileNameRule rule, string evidenceValue, string evidenceKind)
         {
             if (rule == null) return null;
 
             string value = ScannerHelpers.ToLowerSafe(evidenceValue);
             string token = ScannerHelpers.ToLowerSafe(rule.Token);
             string label = NormalizeDetectionLabel(rule.Label);
-            bool isBrowser = evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource" || evidenceKind == "BrowserDownloadLocal";
+            bool isBrowser = evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource" || evidenceKind == "BrowserDownloadLocal" || evidenceKind == "BrowserDownloadRecord";
             bool isUsageTrace = evidenceKind == "ExecutionPrefetch" || evidenceKind == "ExecutionAmCache" || evidenceKind == "RuntimeProcess" || evidenceKind == "RuntimeService" || evidenceKind == "StartupRegistry" || evidenceKind == "ScheduledTask" || evidenceKind.StartsWith("Usage", StringComparison.OrdinalIgnoreCase);
             bool isLocalDownload = evidenceKind == "BrowserDownloadLocal";
+            bool isBrowserDownloadRecord = evidenceKind == "BrowserDownloadRecord";
             bool hasStrongContext = ContainsStrongCheatContext(value);
             bool broad = IsBroadWeakToken(token) || IsBroadRuleLabel(rule.Label);
             bool contextOnlyHistory = IsContextOnlyHistoryEvidenceKind(evidenceKind);
             bool genericProjectToken = IsGenericProjectStructureToken(token);
 
             if (IsKnownBenignContextMatch(value, token, evidenceKind, hasStrongContext, broad)) return null;
+            if (isBrowserDownloadRecord) hasStrongContext = true;
 
             if (isUsageTrace && genericProjectToken && !IsStrongUsageToken(token))
             {
@@ -1970,7 +1681,6 @@ namespace GamerIntegrity
 
             if (IsContextSensitiveSingleWord(token) && !hasStrongContext)
             {
-                if (isBrowser && !isLocalDownload) return null;
                 confidence = Math.Min(confidence, 50);
                 score = Math.Min(score, 6);
                 severity = Severity.Low;
@@ -1979,7 +1689,10 @@ namespace GamerIntegrity
 
             if (isBrowser && !hasStrongContext && IsShortOrRiskyToken(token))
             {
-                return null;
+                confidence = Math.Min(confidence, 44);
+                score = Math.Min(score, 4);
+                severity = Severity.Low;
+                label = "Context-needed keyword hit";
             }
 
             if (isUsageTrace)
@@ -2106,7 +1819,7 @@ namespace GamerIntegrity
                 if (IsVeryBroadWeakToken(token) && !hasStrongContext) return true;
             }
 
-            if ((evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource") && broad && !hasStrongContext) return true;
+            if ((evidenceKind == "BrowserHistory" || evidenceKind == "BrowserSource") && broad && !hasStrongContext) return false;
 
             return false;
         }
@@ -2214,13 +1927,13 @@ namespace GamerIntegrity
 
         private static bool IsBroadWeakToken(string token)
         {
-            string[] tokens = { "cheat", "hack", "hacks", "trainer", "modmenu", "mod-menu", "executor", "exploit", "overlay", "paste", "crack", "offsets", "netvars", "signatures", "patternscan", "sigscan", "w2s", "rpm", "wpm", "r0", "r3", "eac", "battleye", "vanguard", "faceit", "ricochet", "vgk", "vgc", "dse", "patchguard", "unban", "spoof", "serials", "slotted", "external", "internal", "menu", "driver", "sdk", "dump", "dumper", "trace", "traces", "private", "invite", "auth", "panel", "source", "client dll", "resolver", "loader.dll" };
+            string[] tokens = { "cheat", "hack", "hacks", "trainer", "modmenu", "mod-menu", "executor", "exploit", "overlay", "paste", "crack", "offsets", "netvars", "signatures", "patternscan", "sigscan", "w2s", "rpm", "wpm", "r0", "r3", "eac", "battleye", "vanguard", "faceit", "ricochet", "vgk", "vgc", "dse", "patchguard", "unban", "spoof", "serials", "slotted", "external", "internal", "menu", "driver", "sdk", "dump", "dumper", "trace", "traces", "private", "invite", "auth", "panel", "source", "src", "project", "provider", "client dll", "resolver", "loader.dll", "dayzero", "slapp", "antic" };
             return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool IsVeryBroadWeakToken(string token)
         {
-            string[] tokens = { "external", "internal", "menu", "driver", "sdk", "dump", "dumper", "trace", "traces", "private", "invite", "auth", "panel", "source", "client dll", "resolver", "loader.dll", "overlay" };
+            string[] tokens = { "external", "internal", "menu", "driver", "sdk", "dump", "dumper", "trace", "traces", "private", "invite", "auth", "panel", "source", "src", "project", "provider", "client dll", "resolver", "loader.dll", "overlay", "dayzero", "slapp", "antic" };
             return tokens.Any(t => string.Equals(t, token, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -2272,7 +1985,7 @@ namespace GamerIntegrity
             }
         }
 
-        private static FileNameRule BestRuleMatch(string value, List<FileNameRule> rules)
+        internal static FileNameRule BestRuleMatch(string value, List<FileNameRule> rules)
         {
             if (string.IsNullOrWhiteSpace(value) || rules == null || rules.Count == 0) return null;
 
@@ -2328,7 +2041,7 @@ namespace GamerIntegrity
             return sb.ToString();
         }
 
-        private static IEnumerable<string> SafeEnumerateFiles(string dir, string pattern, SearchOption option)
+        private static IEnumerable<string> SafeEnumerateFiles(string dir, string pattern, SearchOption option, ScanReport report = null, string scope = "")
         {
             if (string.IsNullOrWhiteSpace(dir)) yield break;
 
@@ -2341,13 +2054,13 @@ namespace GamerIntegrity
                 string current = pending.Pop();
 
                 string[] files = Array.Empty<string>();
-                try { files = Directory.GetFiles(current, safePattern); } catch { }
+                try { files = Directory.GetFiles(current, safePattern); } catch (Exception ex) { AddEnumerationLimitation(report, scope, current, "Files could not be listed: " + ex.Message); }
                 foreach (string file in files) yield return file;
 
                 if (option != SearchOption.AllDirectories) continue;
 
                 string[] dirs = Array.Empty<string>();
-                try { dirs = Directory.GetDirectories(current); } catch { }
+                try { dirs = Directory.GetDirectories(current); } catch (Exception ex) { AddEnumerationLimitation(report, scope, current, "Folders could not be listed: " + ex.Message); }
                 foreach (string child in dirs)
                 {
                     if (!IsReparsePoint(child)) pending.Push(child);
@@ -2355,16 +2068,23 @@ namespace GamerIntegrity
             }
         }
 
-        private static IEnumerable<string> SafeEnumerateDirectories(string dir)
+        private static IEnumerable<string> SafeEnumerateDirectories(string dir, ScanReport report = null, string scope = "")
         {
             if (string.IsNullOrWhiteSpace(dir)) yield break;
 
             string[] dirs = Array.Empty<string>();
-            try { dirs = Directory.GetDirectories(dir); } catch { }
+            try { dirs = Directory.GetDirectories(dir); } catch (Exception ex) { AddEnumerationLimitation(report, scope, dir, "Folders could not be listed: " + ex.Message); }
             foreach (string child in dirs)
             {
                 if (!IsReparsePoint(child)) yield return child;
             }
+        }
+
+        private static void AddEnumerationLimitation(ScanReport report, string scope, string path, string message)
+        {
+            if (report == null) return;
+            if (report.Limitations.Count(l => string.Equals(l.Source, "File system", StringComparison.OrdinalIgnoreCase)) >= 80) return;
+            report.AddLimitation("File system", string.IsNullOrWhiteSpace(scope) ? "Enumeration" : scope, path, ScannerHelpers.CollapseWhitespaceForDisplay(message), Severity.Low);
         }
 
         private static bool IsReparsePoint(string path)
@@ -2415,36 +2135,5 @@ namespace GamerIntegrity
             return data.Substring(start, end - start);
         }
 
-        private static string ExtractBestUrl(string text, string token)
-        {
-            foreach (Match m in Regex.Matches(text ?? "", "https?://[^\\s<>\"']+", RegexOptions.IgnoreCase))
-            {
-                string url = CleanUrlCandidate(m.Value);
-                if (string.IsNullOrWhiteSpace(token) || url.IndexOf(token.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) >= 0 || url.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) return url;
-            }
-            var first = Regex.Match(text ?? "", "https?://[^\\s<>\"']+", RegexOptions.IgnoreCase);
-            return first.Success ? CleanUrlCandidate(first.Value) : "";
-        }
-
-        private static string CleanUrlCandidate(string url)
-        {
-            return (url ?? "").Trim().TrimEnd('.', ',', ';', ')', ']', '}', '"', '\'', '\0');
-        }
-
-        private static string DomainFromUrl(string url)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(url)) return "";
-                return new Uri(url).Host;
-            }
-            catch { return ""; }
-        }
-
-        private static string ExtractFirstWindowsPath(string text)
-        {
-            var m = Regex.Match(text ?? "", "[A-Za-z]:\\\\[^\\s<>\"']+", RegexOptions.IgnoreCase);
-            return m.Success ? m.Value.TrimEnd('.', ',', ';', ')', ']', '}', '"', '\'', '\0') : "";
-        }
     }
 }

@@ -25,6 +25,7 @@ namespace GamerIntegrity
     public sealed class ScanReport
     {
         public List<Finding> Findings { get; } = new List<Finding>();
+        public List<ScanLimitation> Limitations { get; } = new List<ScanLimitation>();
         public int RawScore { get; set; }
 
         public void AddFinding(string category, string title, string details, Severity severity, int confidence, int score)
@@ -40,6 +41,40 @@ namespace GamerIntegrity
             });
             RawScore += Math.Max(0, score);
         }
+
+        public void AddLimitation(string source, string scope, string path, string message, Severity severity = Severity.Low)
+        {
+            string safeSource = source ?? "";
+            string safeScope = scope ?? "";
+            string safePath = path ?? "";
+            string safeMessage = message ?? "";
+            foreach (var existing in Limitations)
+            {
+                if (string.Equals(existing.Source, safeSource, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(existing.Scope, safeScope, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(existing.Path, safePath, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(existing.Message, safeMessage, StringComparison.OrdinalIgnoreCase)) return;
+            }
+            Limitations.Add(new ScanLimitation
+            {
+                Source = safeSource,
+                Scope = safeScope,
+                Path = safePath,
+                Message = safeMessage,
+                Severity = severity,
+                When = ScannerHelpers.CurrentLocalTimestamp()
+            });
+        }
+    }
+
+    public sealed class ScanLimitation
+    {
+        public string Source { get; set; } = "";
+        public string Scope { get; set; } = "";
+        public string Path { get; set; } = "";
+        public string Message { get; set; } = "";
+        public Severity Severity { get; set; } = Severity.Low;
+        public string When { get; set; } = "";
     }
 
     public sealed class CategoryScoreBreakdown
@@ -146,6 +181,8 @@ namespace GamerIntegrity
         public string Token { get; set; } = "";
         public string Label { get; set; } = "";
         public string Snippet { get; set; } = "";
+        public string When { get; set; } = "";
+        public string TimeType { get; set; } = "";
         public Severity Severity { get; set; }
         public int Confidence { get; set; }
         public int Score { get; set; }
@@ -156,6 +193,7 @@ namespace GamerIntegrity
         public string Browser { get; set; } = "";
         public string Profile { get; set; } = "";
         public string HistoryPath { get; set; } = "";
+        public string StoreType { get; set; } = "";
     }
 
     public sealed class ExecutionArtifact
@@ -189,6 +227,13 @@ namespace GamerIntegrity
         public Severity Severity { get; set; } = Severity.Info;
         public int Confidence { get; set; }
         public int Score { get; set; }
+    }
+
+    public sealed class BrowserScanResult
+    {
+        public List<BrowserHistorySource> Sources { get; } = new List<BrowserHistorySource>();
+        public List<BrowserHistoryMatch> HistoryMatches { get; } = new List<BrowserHistoryMatch>();
+        public List<BrowserDownloadMatch> DownloadMatches { get; } = new List<BrowserDownloadMatch>();
     }
 
     public sealed class RuntimeArtifact

@@ -429,7 +429,6 @@ namespace GamerIntegrity
             }
             catch
             {
-                // Keep the search box usable even if layout measurements are not ready yet.
             }
         }
 
@@ -451,7 +450,6 @@ namespace GamerIntegrity
                 return;
             }
 
-            // The scan page lives inside the article padding. Keep it responsive while letting the log fill the open space.
             ScanningSection.Height = Math.Max(420, availableHeight - 44);
         }
 
@@ -495,6 +493,7 @@ namespace GamerIntegrity
                         _workspace.Metrics.Add(new MetricItem("Scan confidence", GetString(summary, "scanConfidence", "0") + "%", "How reliable this result is"));
                         _workspace.Metrics.Add(new MetricItem("Points", GetString(summary, "rawSignalPoints", "0"), "Before score cap"));
                         _workspace.Metrics.Add(new MetricItem("Detections", GetString(summary, "findingCount", "0"), "Total matched items"));
+                        _workspace.Metrics.Add(new MetricItem("Limitations", GetString(summary, "scanLimitations", "0"), "Failed/skipped reads"));
                         _workspace.Metrics.Add(new MetricItem("Launch", GetString(summary, "executionArtifacts", "0"), "AmCache / Prefetch"));
                         _workspace.Metrics.Add(new MetricItem("Downloads", GetString(summary, "browserSourceDownloadMatches", "0"), "History and download hits"));
                         _workspace.Metrics.Add(new MetricItem("Projects", GetString(summary, "sourceProjectGroups", "0"), "Grouped build/source hits"));
@@ -507,6 +506,7 @@ namespace GamerIntegrity
 
                     AddTimelineSection(root);
                     AddFindingsSection(root);
+                    AddScanLimitationsSection(root);
                     AddSourceProjectSection(root);
                     AddExecutionSection(root);
                     AddBrowserDownloadSection(root);
@@ -540,7 +540,7 @@ namespace GamerIntegrity
                 string summary = GetString(item, "summary", "");
                 string evidence = GetString(item, "evidence", "");
                 string source = GetString(item, "source", "Timeline");
-                string extra = JoinNonBlank("Time basis: " + GetString(item, "timeType", ""), summary);
+                string extra = JoinNonBlank("Time shown from: " + GetString(item, "timeType", ""), summary);
 
                 return new EvidenceItem
                 {
@@ -572,6 +572,25 @@ namespace GamerIntegrity
                     When = "",
                     Confidence = GetInt(item, "confidence", 0),
                     Score = GetInt(item, "score", 0)
+                };
+            });
+        }
+
+        private void AddScanLimitationsSection(JsonElement root)
+        {
+            AddSection(root, "scanLimitations", "Limitations", "Failed reads, skipped sources, and safety caps that affected scan coverage.", true, delegate(JsonElement item)
+            {
+                return new EvidenceItem
+                {
+                    Section = "Limitations",
+                    Severity = NormalizeSeverity(GetString(item, "severity", "Low")),
+                    Title = FirstNonBlank(GetString(item, "message", "Scan limitation"), "Scan limitation"),
+                    Source = FirstNonBlank(GetString(item, "source", "Scan"), "Scan"),
+                    Detail = GetString(item, "path", ""),
+                    Extra = JoinNonBlank("Scope: " + GetString(item, "scope", ""), "Recorded: " + FriendlyWhen(GetString(item, "when", ""))),
+                    When = FriendlyWhen(GetString(item, "when", "")),
+                    Confidence = 0,
+                    Score = 0
                 };
             });
         }
@@ -813,7 +832,6 @@ namespace GamerIntegrity
                     }
                     catch
                     {
-                        // Skip malformed individual rows but keep the rest of the report usable.
                     }
                 }
             }
@@ -1301,7 +1319,7 @@ namespace GamerIntegrity
                     output.Add(value);
                     continue;
                 }
-                string[] emptyPrefixes = { "Token: ", "Domain: ", "Type: ", "Time basis: ", "Determination: ", "Labels: ", "Tokens: ", "Samples: ", "Manufacturer: ", "Service: ", "Class: ", "Location: ", "Last write: ", "Source: ", "Company: ", "SHA-256: " };
+                string[] emptyPrefixes = { "Token: ", "Domain: ", "Type: ", "Time shown from: ", "Determination: ", "Labels: ", "Tokens: ", "Samples: ", "Manufacturer: ", "Service: ", "Class: ", "Location: ", "Last write: ", "Source: ", "Company: ", "SHA-256: " };
                 bool emptyPrefixed = emptyPrefixes.Any(prefix => value.Equals(prefix.TrimEnd(), StringComparison.OrdinalIgnoreCase));
                 if (!emptyPrefixed) output.Add(value);
             }
