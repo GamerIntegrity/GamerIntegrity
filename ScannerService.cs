@@ -38,6 +38,7 @@ namespace GamerIntegrity
             var drivers = new List<DriverInfo>();
             var hardwareRecords = new List<HardwareRecord>();
             var deviceRecords = new List<DeviceConnectionRecord>();
+            var dmaDeviceRecords = new List<DmaDeviceRecord>();
             var fileMatches = new List<FileNameMatch>();
             var installedProgramMatches = new List<FileNameMatch>();
             var browserMatches = new List<BrowserHistoryMatch>();
@@ -81,13 +82,17 @@ namespace GamerIntegrity
                 runtimeArtifacts = ScanRuntimeStartupServiceEvidence(report);
                 Notify(progress, 66, "Startup and usage trace check complete: " + runtimeArtifacts.Count + " active or persistent artifact(s).");
 
-                Notify(progress, 68, "Checking driver inventory and signatures...");
+                Notify(progress, 68, "Checking driver inventory, signatures, and embedded vulnerable-driver catalog...");
                 drivers = CollectDriverInfo(report);
-                Notify(progress, 72, "Driver inventory complete: " + drivers.Count + " driver service(s) inspected.");
+                Notify(progress, 72, "Driver inventory complete: " + drivers.Count + " driver service(s) inspected; " + drivers.Count(d => d.KnownVulnerableDriver) + " embedded catalog match(es).");
 
                 Notify(progress, 76, "Collecting hardware identity records...");
                 CollectHardwareIdentityInfo(report, hardwareRecords);
-                Notify(progress, 80, "Hardware identity check complete: " + hardwareRecords.Count + " record(s) captured.");
+                Notify(progress, 79, "Hardware identity check complete: " + hardwareRecords.Count + " record(s) captured.");
+
+                Notify(progress, 80, "Checking DMA-capable PCIe, Thunderbolt, and USB4 device context...");
+                CollectDmaPcieDeviceInfo(report, dmaDeviceRecords);
+                Notify(progress, 83, "DMA / PCIe review complete: " + dmaDeviceRecords.Count + " context record(s) captured.");
 
                 Notify(progress, 84, "Checking USB and external-device history...");
                 CollectExternalDeviceInfo(report, deviceRecords);
@@ -123,16 +128,16 @@ namespace GamerIntegrity
                 string redactedManifestPath = Path.Combine(outputDirectory, "GamerIntegrity_Report_Redacted_Integrity.json");
 
                 Notify(progress, 98, "Preparing the in-app report view...");
-                string jsonContent = ReportWriter.BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
+                string jsonContent = ReportWriter.BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, dmaDeviceRecords, installedProgramMatches, fileMatches,
                     browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
                     cheatingTimeline, integrity, false);
-                string htmlContent = ReportWriter.BuildHtmlReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
+                string htmlContent = ReportWriter.BuildHtmlReport(report, drivers, hardwareRecords, deviceRecords, dmaDeviceRecords, installedProgramMatches, fileMatches,
                     browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
                     cheatingTimeline, integrity, false);
-                string redactedJsonContent = ReportWriter.BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
+                string redactedJsonContent = ReportWriter.BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, dmaDeviceRecords, installedProgramMatches, fileMatches,
                     browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
                     cheatingTimeline, integrity, true);
-                string redactedHtmlContent = ReportWriter.BuildHtmlReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
+                string redactedHtmlContent = ReportWriter.BuildHtmlReport(report, drivers, hardwareRecords, deviceRecords, dmaDeviceRecords, installedProgramMatches, fileMatches,
                     browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
                     cheatingTimeline, integrity, true);
                 var redactedCtx = new ReportIntegrityContext
@@ -179,7 +184,7 @@ namespace GamerIntegrity
                     IntegrityContext = integrity,
                     RedactedIntegrityContext = redactedCtx
                 };
-                result.SummaryText = BuildSummaryText(report, hardwareRecords, deviceRecords, fileMatches, browserMatches, browserHistorySources,
+                result.SummaryText = BuildSummaryText(report, hardwareRecords, deviceRecords, dmaDeviceRecords, fileMatches, browserMatches, browserHistorySources,
                     executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, cheatingTimeline, outputDirectory, htmlPath, jsonPath,
                     redactedHtmlPath, redactedJsonPath, redactedManifestPath, integrity);
                 Notify(progress, 100, code == 0 ? "Scan complete. Choose Redacted or Non-Redacted to view results." : "Scan complete, but results could not be prepared.");
@@ -536,6 +541,7 @@ namespace GamerIntegrity
             ScanEventLogTextArtifacts(artifacts, rules);
             ScanSrumDatabase(artifacts, rules);
             ScanCleanupIndicators(report);
+            artifacts.RemoveAll(IsRuntimeSelfNoise);
             DeduplicateRuntimeArtifacts(artifacts);
             ScannerHelpers.SortEvidence(artifacts, a => a.Score, a => a.Confidence, a => a.Severity);
             if (artifacts.Count > 0)
@@ -545,6 +551,13 @@ namespace GamerIntegrity
             }
             else report.AddFinding("Runtime/Startup", "No runtime/startup indicators found", "Running processes, services, startup keys, scheduled tasks, UserAssist, BAM/DAM, Jump Lists, ShellBags, mounted devices, Defender history, SRUM, and local event-log text were checked against local indicators.", Severity.Info, 65, 0);
             return artifacts;
+        }
+
+        private static bool IsRuntimeSelfNoise(RuntimeArtifact artifact)
+        {
+            if (artifact == null) return false;
+            string combined = (artifact.SourceType ?? "") + " " + (artifact.Name ?? "") + " " + (artifact.Path ?? "") + " " + (artifact.Token ?? "") + " " + (artifact.Label ?? "") + " " + (artifact.Details ?? "");
+            return ScannerHelpers.IsGamerIntegritySelfNoise(combined);
         }
 
         private static void ScanProcesses(List<RuntimeArtifact> artifacts, List<FileNameRule> rules)
@@ -1058,6 +1071,8 @@ namespace GamerIntegrity
                     FileExists = exists,
                     WindowsSystemPath = ScannerHelpers.IsWindowsSystemPath(path),
                     Company = exists ? ScannerHelpers.FileCompanyName(path) : "",
+                    ProductName = exists ? ScannerHelpers.FileProductName(path) : "",
+                    OriginalFileName = exists ? ScannerHelpers.FileOriginalFileName(path) : "",
                     Sha256 = exists ? ScannerHelpers.Sha256File(path) : "",
                     SignedTrusted = exists && ScannerHelpers.HasAuthenticodeSignature(path),
                     SuspiciousNamePattern = IsSuspiciousDriverName(name + " " + serviceName + " " + raw),
@@ -1070,7 +1085,29 @@ namespace GamerIntegrity
                         CurrentState = liveState
                     }
                 };
+                var knownVulnerable = KnownVulnerableDriverCatalog.Evaluate(info);
+                if (knownVulnerable != null)
+                {
+                    info.KnownVulnerableDriver = true;
+                    info.KnownVulnerableDriverId = knownVulnerable.RuleId;
+                    info.KnownVulnerableDriverName = knownVulnerable.DisplayName;
+                    info.KnownVulnerableDriverMatch = knownVulnerable.MatchedBy + ": " + knownVulnerable.MatchedValue;
+                    info.KnownVulnerableDriverReason = knownVulnerable.Description;
+                    info.KnownVulnerableDriverSeverity = knownVulnerable.Severity;
+                    info.KnownVulnerableDriverConfidence = knownVulnerable.Confidence;
+                }
+
                 drivers.Add(info);
+            }
+
+            var vulnerableDriverMatches = drivers.Where(d => d.KnownVulnerableDriver).OrderByDescending(d => d.KnownVulnerableDriverSeverity).ThenByDescending(d => d.KnownVulnerableDriverConfidence).Take(20).ToList();
+            if (vulnerableDriverMatches.Count > 0)
+            {
+                var sample = string.Join("\n", vulnerableDriverMatches.Select(d => "- " + d.Name + " | " + d.KnownVulnerableDriverName + " | " + d.KnownVulnerableDriverMatch + " | " + d.Path));
+                Severity severity = vulnerableDriverMatches.Any(d => d.KnownVulnerableDriverSeverity >= Severity.High) ? Severity.High : Severity.Medium;
+                int confidence = Math.Min(92, vulnerableDriverMatches.Max(d => d.KnownVulnerableDriverConfidence));
+                int score = Math.Min(70, 18 + vulnerableDriverMatches.Count * 12);
+                report.AddFinding("Known Vulnerable Drivers", "Known vulnerable driver indicator(s) found", "Embedded catalog " + KnownVulnerableDriverCatalog.Version + " matched " + vulnerableDriverMatches.Count + " driver record(s). These rows are review context and do not prove cheating by themselves.\n" + sample, severity, confidence, score);
             }
 
             var suspicious = drivers.Where(d => d.SuspiciousNamePattern).Take(20).ToList();
@@ -1079,7 +1116,7 @@ namespace GamerIntegrity
                 var sample = string.Join("\n", suspicious.Select(d => "- " + d.Name + " | " + d.Path));
                 report.AddFinding("Drivers", "Suspicious driver/service name patterns", sample, Severity.Medium, 70, Math.Min(80, suspicious.Count * 15));
             }
-            report.AddFinding("Drivers", "Driver service inventory captured", "Driver service entries inspected: " + drivers.Count + "; live device services observed: " + liveDeviceServices.Count + "; signed/trusted binaries: " + drivers.Count(d => d.SignedTrusted) + "; missing binaries: " + drivers.Count(d => !d.FileExists) + ".", Severity.Info, 75, 0);
+            report.AddFinding("Drivers", "Driver service inventory captured", "Driver service entries inspected: " + drivers.Count + "; live device services observed: " + liveDeviceServices.Count + "; signed/trusted binaries: " + drivers.Count(d => d.SignedTrusted) + "; missing binaries: " + drivers.Count(d => !d.FileExists) + "; embedded vulnerable-driver catalog: " + KnownVulnerableDriverCatalog.Version + " (" + KnownVulnerableDriverCatalog.RuleCount + " rule families, " + drivers.Count(d => d.KnownVulnerableDriver) + " match(es)).", Severity.Info, 75, 0);
             return drivers;
         }
 
@@ -1297,6 +1334,404 @@ namespace GamerIntegrity
             }
             object defaultValue = ScannerHelpers.ReadRegistryValue(RegistryHive.LocalMachine, subkey, "");
             return ScannerHelpers.RegistryFileTimeValueToString(defaultValue);
+        }
+
+
+
+        private static void CollectDmaPcieDeviceInfo(ScanReport report, List<DmaDeviceRecord> records)
+        {
+            if (records == null) return;
+
+            AddDmaPcieRegistryRecords(records, "PCI", 650);
+            AddDmaPcieRegistryRecords(records, "USB4", 120);
+            AddDmaPciePresentWmiRecords(records);
+            AddSetupApiDmaPcieRecords(records, 160);
+            DeduplicateDmaPcieRecords(records);
+
+            int timestamped = records.Count(r => !string.IsNullOrWhiteSpace(r.FirstInstallTime) || !string.IsNullOrWhiteSpace(r.InstallTime) || !string.IsNullOrWhiteSpace(r.LastArrivalTime) || !string.IsNullOrWhiteSpace(r.LastRemovalTime));
+            int present = records.Count(r => r.CurrentlyPresent);
+            int identityReview = records.Count(r => r.Severity == Severity.Low);
+            int priorityReview = records.Count(r => r.Severity >= Severity.Medium);
+            int externalHotplug = records.Count(r => ContainsAnyInsensitive(r.ReviewReason, "Thunderbolt", "USB4", "CFexpress", "ExpressCard"));
+            int fpgaOrDma = records.Count(r => ContainsAnyInsensitive(r.Name + " " + r.Manufacturer + " " + r.DeviceId + " " + r.ReviewReason, "DMA", "FPGA", "PCILeech", "LeechCore", "Screamer", "Xilinx", "Altera", "Lattice", "Artix", "Kintex", "Spartan"));
+
+            if (records.Count == 0)
+            {
+                report.AddFinding("DMA / PCIe Review", "No DMA / PCIe device records captured", "Windows did not return PCI/PCIe, Thunderbolt, USB4, CFexpress, or setup-log device records from the local scan sources. This does not prove that DMA hardware was never attached.", Severity.Info, 45, 0);
+                return;
+            }
+
+            var topReview = records
+                .Where(r => r.Severity >= Severity.Medium)
+                .OrderByDescending(r => r.Severity)
+                .ThenByDescending(r => r.Confidence)
+                .Take(10)
+                .Select(r => "- " + DmaPcieDisplayName(r) + " | " + r.ReviewReason)
+                .ToList();
+
+            string details = "DMA / PCIe hardware context captured for reviewer use. Records captured: " + records.Count + "; present records: " + present + "; limited-identity PCI records: " + identityReview + "; priority review: " + priorityReview + "; external hot-plug paths: " + externalHotplug + "; DMA/FPGA-like terms: " + fpgaOrDma + ".";
+            if (priorityReview == 0) details += " No priority DMA-style hardware indicators found. This section is context only and does not prove cheating without matching browser, file, driver, execution, or runtime evidence.";
+            else details += " Priority review rows are listed below; treat them as context unless corroborated by browser, file, driver, execution, or runtime evidence.\n" + string.Join("\n", topReview);
+
+            Severity severity = priorityReview > 0 ? Severity.Medium : (identityReview > 0 ? Severity.Low : Severity.Info);
+            int confidence = priorityReview > 0 ? 72 : (identityReview > 0 ? 62 : 55);
+            int score = priorityReview > 0 ? Math.Min(24, 8 + priorityReview * 4 + fpgaOrDma * 4 + externalHotplug * 2) : 0;
+            report.AddFinding("DMA / PCIe Review", priorityReview > 0 ? "DMA-capable hardware needs review" : "DMA / PCIe hardware context captured", details, severity, confidence, score);
+        }
+
+        private static void AddDmaPcieRegistryRecords(List<DmaDeviceRecord> records, string enumName, int limit)
+        {
+            string root = @"SYSTEM\CurrentControlSet\Enum\" + enumName;
+            int added = 0;
+            foreach (string device in ScannerHelpers.EnumerateSubKeyNames(RegistryHive.LocalMachine, root).Take(limit))
+            {
+                foreach (string instance in ScannerHelpers.EnumerateSubKeyNames(RegistryHive.LocalMachine, root + "\\" + device).Take(100))
+                {
+                    if (added >= limit) return;
+                    string sub = root + "\\" + device + "\\" + instance;
+                    var values = ScannerHelpers.ReadRegistryValues(RegistryHive.LocalMachine, sub);
+                    string rawDesc = FirstNonBlank(Value(values, "FriendlyName"), Value(values, "DeviceDesc"), device);
+                    string desc = NormalizeDmaPcieDeviceName(rawDesc, device);
+                    string manufacturer = NormalizeDmaPcieDeviceName(Value(values, "Mfg"), "");
+                    string service = Value(values, "Service");
+                    string className = Value(values, "Class");
+                    string classGuid = Value(values, "ClassGUID");
+                    string location = Value(values, "LocationInformation");
+                    if (!string.IsNullOrWhiteSpace(rawDesc) && !string.Equals(rawDesc, desc, StringComparison.OrdinalIgnoreCase)) location = JoinNonBlankDistinct(location, "Raw registry name: " + rawDesc);
+                    string hardwareIds = RegistryValueToDisplay(values, "HardwareID");
+                    string compatibleIds = RegistryValueToDisplay(values, "CompatibleIDs");
+                    string deviceId = enumName + "\\" + device + "\\" + instance;
+                    string reviewReason = BuildDmaPcieReviewReason(enumName, deviceId, desc, manufacturer, service, className, classGuid, location, hardwareIds, compatibleIds);
+                    Severity severity = DmaPcieReviewSeverity(reviewReason);
+                    int confidence = DmaPcieReviewConfidence(reviewReason, severity);
+                    string keyLastWrite = ScannerHelpers.RegistryKeyLastWriteTime(RegistryHive.LocalMachine, sub);
+                    string firstInstall = ReadDevicePropertyTimestamp(sub, "0065");
+                    string install = ReadDevicePropertyTimestamp(sub, "0064");
+                    string lastArrival = ReadDevicePropertyTimestamp(sub, "0066");
+                    string lastRemoval = ReadDevicePropertyTimestamp(sub, "0067");
+                    if (string.IsNullOrWhiteSpace(install)) install = keyLastWrite;
+
+                    records.Add(new DmaDeviceRecord
+                    {
+                        Enumerator = enumName,
+                        DeviceId = deviceId,
+                        Name = desc,
+                        Manufacturer = manufacturer,
+                        Service = service,
+                        ClassName = className,
+                        ClassGuid = classGuid,
+                        Location = location,
+                        HardwareIds = hardwareIds,
+                        CompatibleIds = compatibleIds,
+                        FirstInstallTime = firstInstall,
+                        InstallTime = install,
+                        LastArrivalTime = lastArrival,
+                        LastRemovalTime = lastRemoval,
+                        CurrentlyPresent = false,
+                        Source = string.IsNullOrWhiteSpace(keyLastWrite) ? "Registry Enum\\" + enumName : "Registry Enum\\" + enumName + " (key last write fallback captured)",
+                        ReviewReason = reviewReason,
+                        Severity = severity,
+                        Confidence = confidence
+                    });
+                    added++;
+                }
+            }
+        }
+
+        private static void AddDmaPciePresentWmiRecords(List<DmaDeviceRecord> records)
+        {
+            var rows = ScannerHelpers.WmiQueryRows("ROOT\\CIMV2", "SELECT Name,Description,Manufacturer,PNPDeviceID,Service,ClassGuid,PNPClass,Status FROM Win32_PnPEntity WHERE PNPDeviceID LIKE 'PCI%' OR PNPDeviceID LIKE 'USB4%' OR Name LIKE '%Thunderbolt%' OR Name LIKE '%USB4%' OR Description LIKE '%Thunderbolt%' OR Description LIKE '%USB4%' OR Description LIKE '%CFexpress%'", "Name", "Description", "Manufacturer", "PNPDeviceID", "Service", "ClassGuid", "PNPClass", "Status");
+            foreach (var row in rows.Take(750))
+            {
+                string deviceId = ScannerHelpers.WmiValue(row, "PNPDeviceID");
+                if (string.IsNullOrWhiteSpace(deviceId)) continue;
+                string name = NormalizeDmaPcieDeviceName(FirstNonBlank(ScannerHelpers.WmiValue(row, "Name"), ScannerHelpers.WmiValue(row, "Description"), deviceId), deviceId);
+                string manufacturer = NormalizeDmaPcieDeviceName(ScannerHelpers.WmiValue(row, "Manufacturer"), "");
+                string service = ScannerHelpers.WmiValue(row, "Service");
+                string classGuid = ScannerHelpers.WmiValue(row, "ClassGuid");
+                string className = ScannerHelpers.WmiValue(row, "PNPClass");
+                string status = ScannerHelpers.WmiValue(row, "Status");
+                string reviewReason = BuildDmaPcieReviewReason(GetEnumeratorFromDeviceId(deviceId), deviceId, name, manufacturer, service, className, classGuid, "Status=" + status, "", "");
+                Severity severity = DmaPcieReviewSeverity(reviewReason);
+
+                records.Add(new DmaDeviceRecord
+                {
+                    Enumerator = GetEnumeratorFromDeviceId(deviceId),
+                    DeviceId = deviceId,
+                    Name = name,
+                    Manufacturer = manufacturer,
+                    Service = service,
+                    ClassName = className,
+                    ClassGuid = classGuid,
+                    Location = "Status: " + status,
+                    CurrentlyPresent = true,
+                    Source = "Win32_PnPEntity live inventory",
+                    ReviewReason = reviewReason,
+                    Severity = severity,
+                    Confidence = DmaPcieReviewConfidence(reviewReason, severity)
+                });
+            }
+        }
+
+        private static void AddSetupApiDmaPcieRecords(List<DmaDeviceRecord> records, int limit)
+        {
+            try
+            {
+                string path = Path.Combine(ScannerHelpers.GetWindowsDirectoryPath(), "INF", "setupapi.dev.log");
+                if (!File.Exists(path)) return;
+
+                string text = ReadTailText(path, 8 * 1024 * 1024);
+                if (string.IsNullOrWhiteSpace(text)) return;
+
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                string currentSectionTime = "";
+                using (var reader = new StringReader(text))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null && seen.Count < limit)
+                    {
+                        var section = Regex.Match(line, @"Section start\s+([0-9]{4}/[0-9]{2}/[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2})", RegexOptions.IgnoreCase);
+                        if (section.Success) currentSectionTime = NormalizeSetupApiTimestamp(section.Groups[1].Value);
+
+                        var match = Regex.Match(line, @"(?i)(PCI\\VEN_[A-Z0-9&_.\\-]+|USB4\\[A-Z0-9&_.\\-]+)");
+                        if (!match.Success && !ContainsAnyInsensitive(line, "Thunderbolt", "USB4", "CFexpress", "PCILeech", "LeechCore", "Screamer", "FPGA", "Xilinx", "Altera", "Lattice")) continue;
+
+                        string deviceId = match.Success ? match.Groups[1].Value.Trim() : ShortLogDeviceEvidence(line);
+                        if (string.IsNullOrWhiteSpace(deviceId) || !seen.Add(deviceId)) continue;
+
+                        string reviewReason = BuildDmaPcieReviewReason(GetEnumeratorFromDeviceId(deviceId), deviceId, line, "", "", "", "", "", "", "") + "; historical SetupAPI install/log evidence";
+                        Severity severity = DmaPcieReviewSeverity(reviewReason);
+                        records.Add(new DmaDeviceRecord
+                        {
+                            Enumerator = FirstNonBlank(GetEnumeratorFromDeviceId(deviceId), "SetupAPI"),
+                            DeviceId = deviceId,
+                            Name = ShortLogDeviceEvidence(line),
+                            InstallTime = currentSectionTime,
+                            Source = "SetupAPI.dev.log",
+                            ReviewReason = reviewReason,
+                            Severity = severity,
+                            Confidence = Math.Max(45, DmaPcieReviewConfidence(reviewReason, severity) - 10)
+                        });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void DeduplicateDmaPcieRecords(List<DmaDeviceRecord> records)
+        {
+            var best = new Dictionary<string, DmaDeviceRecord>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in records.ToList())
+            {
+                string key = string.IsNullOrWhiteSpace(r.DeviceId) ? (r.Source + "|" + r.Name) : NormalizeDeviceInstanceId(r.DeviceId);
+                DmaDeviceRecord existing;
+                if (!best.TryGetValue(key, out existing))
+                {
+                    best[key] = r;
+                    continue;
+                }
+                MergeDmaPcieRecord(existing, r);
+            }
+
+            records.Clear();
+            records.AddRange(best.Values
+                .OrderByDescending(r => r.Severity)
+                .ThenByDescending(r => r.Confidence)
+                .ThenByDescending(r => r.CurrentlyPresent)
+                .ThenBy(r => r.Name)
+                .Take(900));
+        }
+
+        private static void MergeDmaPcieRecord(DmaDeviceRecord target, DmaDeviceRecord source)
+        {
+            target.Name = FirstNonBlank(target.Name, source.Name);
+            target.Manufacturer = FirstNonBlank(target.Manufacturer, source.Manufacturer);
+            target.Service = FirstNonBlank(target.Service, source.Service);
+            target.ClassName = FirstNonBlank(target.ClassName, source.ClassName);
+            target.ClassGuid = FirstNonBlank(target.ClassGuid, source.ClassGuid);
+            target.Location = JoinNonBlankDistinct(target.Location, source.Location);
+            target.HardwareIds = JoinNonBlankDistinct(target.HardwareIds, source.HardwareIds);
+            target.CompatibleIds = JoinNonBlankDistinct(target.CompatibleIds, source.CompatibleIds);
+            target.FirstInstallTime = FirstNonBlank(target.FirstInstallTime, source.FirstInstallTime);
+            target.InstallTime = FirstNonBlank(target.InstallTime, source.InstallTime);
+            target.LastArrivalTime = FirstNonBlank(target.LastArrivalTime, source.LastArrivalTime);
+            target.LastRemovalTime = FirstNonBlank(target.LastRemovalTime, source.LastRemovalTime);
+            target.CurrentlyPresent = target.CurrentlyPresent || source.CurrentlyPresent;
+            target.Source = JoinNonBlankDistinct(target.Source, source.Source);
+            target.ReviewReason = JoinReasonFragmentsDistinct(target.ReviewReason, source.ReviewReason);
+            if (source.Severity > target.Severity) target.Severity = source.Severity;
+            target.Confidence = Math.Max(target.Confidence, source.Confidence);
+        }
+
+        private static string BuildDmaPcieReviewReason(string enumerator, string deviceId, string name, string manufacturer, string service, string className, string classGuid, string location, string hardwareIds, string compatibleIds)
+        {
+            string combined = ScannerHelpers.ToLowerSafe(string.Join(" ", new[] { enumerator, deviceId, name, manufacturer, service, className, classGuid, location, hardwareIds, compatibleIds }));
+            var reasons = new List<string>();
+
+            if (combined.Contains("thunderbolt")) reasons.Add("Thunderbolt device path can expose external PCIe/DMA-capable hardware");
+            if (combined.Contains("usb4")) reasons.Add("USB4 device path can expose external PCIe/DMA-capable hardware");
+            if (combined.Contains("cfexpress") || combined.Contains("expresscard")) reasons.Add("External PCIe-style expansion/storage path");
+            if (combined.Contains("fpga") || combined.Contains("xilinx") || combined.Contains("altera") || combined.Contains("lattice") || combined.Contains("artix") || combined.Contains("kintex") || combined.Contains("spartan")) reasons.Add("FPGA/DMA-adjacent hardware term");
+            if (combined.Contains("pcileech") || combined.Contains("leechcore") || combined.Contains("screamer") || combined.Contains("dma")) reasons.Add("Direct DMA tooling or DMA keyword");
+            if (combined.Contains("unknown device") || combined.Contains("base system device") || combined.Contains("pci device") || combined.Contains("multimedia controller") || string.IsNullOrWhiteSpace(name)) reasons.Add("Generic or unknown PCI device identity");
+            if (combined.Contains("ven_") && combined.Contains("dev_") && (string.IsNullOrWhiteSpace(manufacturer) || manufacturer.Equals("Unknown", StringComparison.OrdinalIgnoreCase))) reasons.Add("PCI vendor/device ID present with limited manufacturer identity");
+            if (ScannerHelpers.StartsWithInsensitive(deviceId, "PCI\\")) reasons.Add("PCI/PCIe device retained by Windows; review only if unexpected");
+            if (ScannerHelpers.StartsWithInsensitive(deviceId, "USB4\\")) reasons.Add("USB4 device retained by Windows; review external-device context");
+
+            if (reasons.Count == 0) reasons.Add("DMA-capable device context captured for baseline review only");
+            return string.Join("; ", reasons.Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static Severity DmaPcieReviewSeverity(string reason)
+        {
+            string r = ScannerHelpers.ToLowerSafe(reason);
+            if (ContainsAnyInsensitive(r, "direct dma", "pcileech", "leechcore", "screamer", "fpga", "xilinx", "altera", "lattice", "artix", "kintex", "spartan")) return Severity.Medium;
+            if (ContainsAnyInsensitive(r, "thunderbolt", "usb4", "cfexpress", "expresscard", "unknown pci", "generic or unknown", "limited manufacturer")) return Severity.Low;
+            return Severity.Info;
+        }
+
+        private static int DmaPcieReviewConfidence(string reason, Severity severity)
+        {
+            int confidence = severity == Severity.Medium ? 72 : (severity == Severity.Low ? 60 : 45);
+            if (ContainsAnyInsensitive(reason, "historical SetupAPI")) confidence = Math.Max(40, confidence - 8);
+            return confidence;
+        }
+
+        private static string DmaPcieDisplayName(DmaDeviceRecord record)
+        {
+            if (record == null) return "PCI/PCIe device";
+            string name = NormalizeDmaPcieDeviceName(record.Name, record.DeviceId);
+            if (string.IsNullOrWhiteSpace(name) || LooksLikeSetupApiDeviceLine(name)) name = FirstNonBlank(record.DeviceId, record.Name, "PCI/PCIe device");
+            return name;
+        }
+
+        private static bool LooksLikeSetupApiDeviceLine(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            return v.StartsWith("dvi:") || v.StartsWith("ndv:") || v.StartsWith("inf:") || v.Contains(" pci\\ven_") || v.Contains("usb4\\");
+        }
+
+        private static string NormalizeDmaPcieDeviceName(string value, string fallback)
+        {
+            string clean = ScannerHelpers.CollapseWhitespaceForDisplay(value ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(clean)) return ScannerHelpers.Trim(fallback);
+
+            int semi = clean.LastIndexOf(';');
+            if (semi >= 0 && semi < clean.Length - 1)
+            {
+                string after = clean.Substring(semi + 1).Trim();
+                if (!string.IsNullOrWhiteSpace(after) && !after.StartsWith("%", StringComparison.Ordinal)) return after;
+            }
+
+            var quoted = Regex.Match(clean, @"^@[^,]+,%[^%]+%;(.+)$", RegexOptions.IgnoreCase);
+            if (quoted.Success && !string.IsNullOrWhiteSpace(quoted.Groups[1].Value)) return quoted.Groups[1].Value.Trim();
+
+            if (clean.StartsWith("@", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(fallback)) return ScannerHelpers.Trim(fallback);
+            return clean;
+        }
+
+        private static string JoinReasonFragmentsDistinct(params string[] values)
+        {
+            var fragments = new List<string>();
+            foreach (string value in values ?? new string[0])
+            {
+                if (string.IsNullOrWhiteSpace(value)) continue;
+                foreach (string part in value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string clean = ScannerHelpers.CollapseWhitespaceForDisplay(part).Trim();
+                    if (!string.IsNullOrWhiteSpace(clean)) fragments.Add(clean);
+                }
+            }
+            return string.Join("; ", fragments.Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static string RegistryValueToDisplay(Dictionary<string, object> values, string key)
+        {
+            object v;
+            if (values == null || !values.TryGetValue(key, out v) || v == null) return "";
+            if (v is string[] strings) return string.Join(", ", strings.Where(x => !string.IsNullOrWhiteSpace(x)).Take(12));
+            if (v is object[] objects) return string.Join(", ", objects.Select(o => o == null ? "" : o.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).Take(12));
+            return ScannerHelpers.Trim(v.ToString());
+        }
+
+        private static string ReadTailText(string path, int maxBytes)
+        {
+            try
+            {
+                var info = new FileInfo(path);
+                int count = (int)Math.Min(info.Length, Math.Max(4096, maxBytes));
+                long start = Math.Max(0, info.Length - count);
+                byte[] bytes = new byte[count];
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    fs.Seek(start, SeekOrigin.Begin);
+                    int read = fs.Read(bytes, 0, bytes.Length);
+                    if (read < bytes.Length) Array.Resize(ref bytes, read);
+                }
+
+                int sample = Math.Min(bytes.Length, 4096);
+                int zerosOdd = 0;
+                int zerosEven = 0;
+                for (int i = 0; i < sample; i++)
+                {
+                    if (bytes[i] == 0)
+                    {
+                        if ((i & 1) == 0) zerosEven++;
+                        else zerosOdd++;
+                    }
+                }
+
+                Encoding encoding = (zerosOdd > sample / 6 || zerosEven > sample / 6) ? Encoding.Unicode : Encoding.UTF8;
+                return encoding.GetString(bytes);
+            }
+            catch { return ""; }
+        }
+
+        private static string NormalizeSetupApiTimestamp(string value)
+        {
+            DateTime dt;
+            if (DateTime.TryParseExact(value, "yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dt))
+                return dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            return ScannerHelpers.Trim(value);
+        }
+
+        private static string ShortLogDeviceEvidence(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return "";
+            string clean = Regex.Replace(line, "\\s+", " ").Trim();
+            return clean.Length <= 220 ? clean : clean.Substring(0, 220);
+        }
+
+        private static string GetEnumeratorFromDeviceId(string deviceId)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId)) return "";
+            int slash = deviceId.IndexOf('\\');
+            return slash > 0 ? deviceId.Substring(0, slash) : "";
+        }
+
+        private static string NormalizeDeviceInstanceId(string deviceId)
+        {
+            return Regex.Replace(deviceId ?? "", "\\s+", "").Trim().ToUpperInvariant();
+        }
+
+        private static bool ContainsAnyInsensitive(string value, params string[] tokens)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            return tokens.Any(t => !string.IsNullOrWhiteSpace(t) && v.Contains(ScannerHelpers.ToLowerSafe(t)));
+        }
+
+        private static string FirstNonBlank(params string[] values)
+        {
+            foreach (string v in values)
+            {
+                if (!string.IsNullOrWhiteSpace(v)) return v;
+            }
+            return "";
+        }
+
+        private static string JoinNonBlankDistinct(params string[] values)
+        {
+            return string.Join("; ", (values ?? new string[0]).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).Distinct(StringComparer.OrdinalIgnoreCase));
         }
 
         private static void AddScanLimitationsSummary(ScanReport report)
@@ -1522,13 +1957,38 @@ namespace GamerIntegrity
         {
             var events = new List<CheatingTimelineEvent>();
             foreach (var e in executionArtifacts.Take(200)) events.Add(new CheatingTimelineEvent { When = e.When, EventType = "Launch trace", Source = e.Source, Summary = e.Label, Evidence = e.Path + " " + e.Details, TimeType = "Windows launch trace time", Severity = e.Severity, Confidence = e.Confidence });
-            foreach (var d in browserDownloads.Take(200)) events.Add(new CheatingTimelineEvent { When = d.When, EventType = "Browser evidence", Source = d.Browser + " " + d.Profile, Summary = d.Label, Evidence = string.IsNullOrWhiteSpace(d.Url) ? d.Snippet : d.Url, TimeType = d.TimeType, Severity = d.Severity, Confidence = d.Confidence });
+            foreach (var d in browserDownloads.Take(200))
+            {
+                string evidence = string.IsNullOrWhiteSpace(d.Url) ? d.Snippet : d.Url;
+                if (!IsLowContextBrowserTimelineNoise(d.Label, evidence, d.Severity, d.Confidence))
+                    events.Add(new CheatingTimelineEvent { When = d.When, EventType = "Browser evidence", Source = d.Browser + " " + d.Profile, Summary = d.Label, Evidence = evidence, TimeType = d.TimeType, Severity = d.Severity, Confidence = d.Confidence });
+            }
             foreach (var f in fileMatches.Where(f => !string.IsNullOrWhiteSpace(f.LastWriteTime)).Take(200)) events.Add(new CheatingTimelineEvent { When = f.LastWriteTime, EventType = "File/folder detection", Source = "File system", Summary = f.Label, Evidence = f.Path, TimeType = "File last changed", Severity = f.Severity, Confidence = f.Confidence });
-            foreach (var b in browserMatches.Take(100)) events.Add(new CheatingTimelineEvent { When = string.IsNullOrWhiteSpace(b.When) ? ScannerHelpers.FileTimeString(b.HistoryPath) : b.When, EventType = "Browser keyword lead", Source = b.Browser + " " + b.Profile, Summary = b.Label, Evidence = b.Snippet, TimeType = string.IsNullOrWhiteSpace(b.TimeType) ? "Browser history file time" : b.TimeType, Severity = b.Severity, Confidence = b.Confidence });
+            foreach (var b in browserMatches.Take(100))
+            {
+                string evidence = b.Snippet;
+                if (!IsLowContextBrowserTimelineNoise(b.Label, evidence, b.Severity, b.Confidence))
+                    events.Add(new CheatingTimelineEvent { When = string.IsNullOrWhiteSpace(b.When) ? ScannerHelpers.FileTimeString(b.HistoryPath) : b.When, EventType = "Browser keyword lead", Source = b.Browser + " " + b.Profile, Summary = b.Label, Evidence = evidence, TimeType = string.IsNullOrWhiteSpace(b.TimeType) ? "Browser history file time" : b.TimeType, Severity = b.Severity, Confidence = b.Confidence });
+            }
             foreach (var p in sourceProjects.Take(50)) events.Add(new CheatingTimelineEvent { When = LatestSampleTime(p.Samples), EventType = "Source/build group", Source = "File system grouping", Summary = p.Determination, Evidence = p.Root, TimeType = "Newest project file time", Severity = p.MaxSeverity, Confidence = p.MaxConfidence });
             events = MergeDuplicateBrowserTimelineEvents(events);
             events.Sort((a, b) => string.Compare(b.When, a.When, StringComparison.OrdinalIgnoreCase));
             return events.Take(500).ToList();
+        }
+
+
+        private static bool IsLowContextBrowserTimelineNoise(string label, string evidence, Severity severity, int confidence)
+        {
+            if (severity > Severity.Low || confidence > 50) return false;
+
+            string combined = ScannerHelpers.ToLowerSafe((label ?? "") + " " + (evidence ?? ""));
+            if (string.IsNullOrWhiteSpace(combined)) return true;
+
+            if (ContainsAnyInsensitive(combined, "unknowncheats", "cosmocheats", "aimbot", "triggerbot", "wallhack", "spinbot", "ragebot", "kdmapper", "dll injector", "extreme injector", "hwid spoofer", "vanguard bypass", "eac bypass", "battleye bypass", "faceit bypass", "vac", "cs2 esp", "cs2 cheat", "counter-strike 2 hacks", "game hacking and cheats")) return false;
+
+            if (ContainsAnyInsensitive(combined, "chatgpt.com", "docs.github.com", "runelite.net", "account.jagex.com", "youtube.com", "youtu.be", "music", "official video", "forgot password", "github pages", "melonloader", "deepseek.com")) return true;
+
+            return combined.Contains("context-needed");
         }
 
         private static List<CheatingTimelineEvent> MergeDuplicateBrowserTimelineEvents(List<CheatingTimelineEvent> events)
@@ -1587,7 +2047,7 @@ namespace GamerIntegrity
             return latest;
         }
 
-        private static string BuildSummaryText(ScanReport report, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, string outputDirectory, string htmlPath, string jsonPath, string redactedHtmlPath, string redactedJsonPath, string redactedManifestPath, ReportIntegrityContext integrity)
+        private static string BuildSummaryText(ScanReport report, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<DmaDeviceRecord> dmaDeviceRecords, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, string outputDirectory, string htmlPath, string jsonPath, string redactedHtmlPath, string redactedJsonPath, string redactedManifestPath, ReportIntegrityContext integrity)
         {
             ScoreAssessment assessment = ReportWriter.CalculateScoreAssessment(report);
             VerdictAssessment verdict = ReportWriter.BuildVerdict(report, assessment, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
@@ -1609,6 +2069,7 @@ namespace GamerIntegrity
             sb.AppendLine("Scan limitations / failed reads: " + report.Limitations.Count);
             sb.AppendLine("Hardware records: " + hardwareRecords.Count);
             sb.AppendLine("External USB devices: " + deviceRecords.Count);
+            sb.AppendLine("DMA / PCIe review records: " + dmaDeviceRecords.Count + " (present: " + dmaDeviceRecords.Count(d => d.CurrentlyPresent) + ", priority review: " + dmaDeviceRecords.Count(d => d.Severity >= Severity.Medium) + ")");
             sb.AppendLine("File/folder name hits: " + fileMatches.Count);
             sb.AppendLine("Detected browser profiles: " + browserHistorySources.Count);
             sb.AppendLine("Browser/domain keyword hits: " + browserMatches.Count);

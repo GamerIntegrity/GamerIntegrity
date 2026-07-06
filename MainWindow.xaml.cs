@@ -222,6 +222,10 @@ namespace GamerIntegrity
             {
                 return new ScanStatusText("Driver review", "Checking driver inventory", "Reading local driver/service records and signatures so suspicious driver context can stand out." + countText, "Drivers", stage);
             }
+            if (lower.Contains("dma") || lower.Contains("pcie") || lower.Contains("pci/") || lower.Contains("thunderbolt") || lower.Contains("usb4"))
+            {
+                return new ScanStatusText("DMA / PCIe review", "Checking DMA-capable hardware context", "Reviewing PCIe, Thunderbolt, USB4, CFexpress, FPGA/DMA-adjacent, and SetupAPI device records for context." + countText, "Hardware review", stage);
+            }
             if (lower.Contains("hardware") || lower.Contains("bios") || lower.Contains("disk") || lower.Contains("identity"))
             {
                 return new ScanStatusText("Hardware identity", "Capturing hardware identity records", "Collecting local board, BIOS, disk, and network-adapter identifiers for review context." + countText, "Hardware", stage);
@@ -496,6 +500,8 @@ namespace GamerIntegrity
                         _workspace.Metrics.Add(new MetricItem("Limitations", GetString(summary, "scanLimitations", "0"), "Failed/skipped reads"));
                         _workspace.Metrics.Add(new MetricItem("Launch", GetString(summary, "executionArtifacts", "0"), "AmCache / Prefetch"));
                         _workspace.Metrics.Add(new MetricItem("Downloads", GetString(summary, "browserSourceDownloadMatches", "0"), "History and download hits"));
+                        _workspace.Metrics.Add(new MetricItem("DMA / PCIe", GetString(summary, "dmaPcieReviewRecords", "0"), "Hardware review context"));
+                        _workspace.Metrics.Add(new MetricItem("Vuln drivers", GetString(summary, "knownVulnerableDriverMatches", "0"), GetString(summary, "knownVulnerableDriverCatalog", "Embedded catalog")));
                         _workspace.Metrics.Add(new MetricItem("Projects", GetString(summary, "sourceProjectGroups", "0"), "Grouped build/source hits"));
                     }
                     else
@@ -514,6 +520,7 @@ namespace GamerIntegrity
                     AddInstalledProgramsSection(root);
                     AddBrowserKeywordsSection(root);
                     AddFileNameSection(root);
+                    AddDmaPcieSection(root);
                     AddExternalDevicesSection(root);
                     AddHardwareSection(root);
                     AddDriversSection(root);
@@ -736,16 +743,52 @@ namespace GamerIntegrity
             });
         }
 
-        private void AddExternalDevicesSection(JsonElement root)
+
+
+        private void AddDmaPcieSection(JsonElement root)
         {
-            AddSection(root, "externalDevices", "External Devices", "USB and external device history for scan context.", false, delegate(JsonElement item)
+            AddSection(root, "dmaPcieReviewRecords", "DMA / PCIe", "PCIe, Thunderbolt, USB4, CFexpress, FPGA/DMA-adjacent, and setup-log device context. Review-only unless corroborated by other evidence.", false, delegate(JsonElement item)
             {
-                string title = FirstNonBlank(GetString(item, "description", ""), GetString(item, "deviceId", "External device"));
+                string title = FirstNonBlank(GetString(item, "name", ""), GetString(item, "deviceId", "DMA / PCIe device"));
                 string extra = JoinNonBlank(
                     "Manufacturer: " + GetString(item, "manufacturer", ""),
                     "Service: " + GetString(item, "service", ""),
                     "Class: " + GetString(item, "className", ""),
+                    "Source: " + GetString(item, "source", ""),
                     "Location: " + GetString(item, "location", ""),
+                    "Present: " + GetString(item, "currentlyPresent", ""),
+                    "Reason: " + GetString(item, "reviewReason", ""));
+
+                return new EvidenceItem
+                {
+                    Section = "DMA / PCIe",
+                    Severity = NormalizeSeverity(GetString(item, "severity", "Info")),
+                    Title = title,
+                    Source = FirstNonBlank(GetString(item, "enumerator", ""), "DMA / PCIe review"),
+                    Detail = GetString(item, "deviceId", ""),
+                    Extra = extra,
+                    When = FriendlyWhen(FirstNonBlank(GetString(item, "bestObservedTime", ""), GetString(item, "lastArrivalTime", ""), GetString(item, "installTime", ""))),
+                    Confidence = GetInt(item, "confidence", 0),
+                    Score = 0
+                };
+            });
+        }
+
+        private void AddExternalDevicesSection(JsonElement root)
+        {
+            AddSection(root, "externalDevices", "External Devices", "Retained USB connection history for scan context.", false, delegate(JsonElement item)
+            {
+                bool massStorage = string.Equals(GetString(item, "massStorage", ""), "true", StringComparison.OrdinalIgnoreCase);
+                string title = ScannerHelpers.FriendlyWindowsDeviceText(GetString(item, "description", ""), massStorage ? "USB storage device" : "External USB device");
+                string detail = ExternalDeviceSummary(item);
+                string manufacturer = ScannerHelpers.FriendlyWindowsDeviceText(GetString(item, "manufacturer", ""), "");
+                string location = ScannerHelpers.FriendlyWindowsDeviceText(GetString(item, "location", ""), "");
+                string extra = JoinNonBlank(
+                    "Identifier: " + FriendlyExternalDeviceIdentifier(GetString(item, "deviceId", "")),
+                    "Manufacturer: " + manufacturer,
+                    "Service: " + GetString(item, "service", ""),
+                    "Class: " + GetString(item, "className", ""),
+                    "Location: " + location,
                     "Present: " + GetString(item, "currentlyPresent", ""),
                     "Mass storage: " + GetString(item, "massStorage", ""));
 
@@ -755,13 +798,31 @@ namespace GamerIntegrity
                     Severity = "Info",
                     Title = title,
                     Source = FirstNonBlank(GetString(item, "enumerator", ""), GetString(item, "source", "USB history")),
-                    Detail = GetString(item, "deviceId", ""),
+                    Detail = detail,
                     Extra = extra,
                     When = FriendlyWhen(FirstNonBlank(GetString(item, "bestObservedTime", ""), GetString(item, "lastArrivalTime", ""))),
                     Confidence = 0,
                     Score = 0
                 };
             });
+        }
+
+        private static string ExternalDeviceSummary(JsonElement item)
+        {
+            bool massStorage = string.Equals(GetString(item, "massStorage", ""), "true", StringComparison.OrdinalIgnoreCase);
+            bool present = string.Equals(GetString(item, "currentlyPresent", ""), "true", StringComparison.OrdinalIgnoreCase);
+            string summary = massStorage ? "Retained USB storage connection record" : "Retained USB device connection record";
+            if (present) summary += " currently present";
+            return summary;
+        }
+
+        private static string FriendlyExternalDeviceIdentifier(string deviceId)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId)) return "";
+            string clean = deviceId.Trim().Replace('/', '\\');
+            string[] parts = clean.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2) return parts[0] + "\\" + parts[1];
+            return clean;
         }
 
         private void AddHardwareSection(JsonElement root)
@@ -788,11 +849,18 @@ namespace GamerIntegrity
             AddSection(root, "drivers", "Drivers", "Loaded drivers, signatures, locations, and suspicious name hits.", false, delegate(JsonElement item)
             {
                 bool suspicious = GetBool(item, "suspiciousNamePattern", false);
+                bool vulnerable = GetBool(item, "knownVulnerableDriver", false);
                 bool windows = GetBool(item, "windowsSystemPath", false);
                 bool signed = GetBool(item, "signed", false);
-                string severity = suspicious ? "Medium" : (!windows && !signed ? "Low" : "Info");
+                string severity = vulnerable ? GetString(item, "knownVulnerableDriverSeverity", "Medium") : (suspicious ? "Medium" : (!windows && !signed ? "Low" : "Info"));
                 string extra = JoinNonBlank(
+                    "Known vulnerable driver: " + vulnerable,
+                    "Catalog match: " + GetString(item, "knownVulnerableDriverName", ""),
+                    "Match reason: " + GetString(item, "knownVulnerableDriverMatch", ""),
+                    "Catalog context: " + GetString(item, "knownVulnerableDriverReason", ""),
                     "Company: " + GetString(item, "company", ""),
+                    "Product: " + GetString(item, "productName", ""),
+                    "Original file: " + GetString(item, "originalFileName", ""),
                     "SHA-256: " + GetString(item, "sha256", ""),
                     "Signed: " + signed,
                     "Windows path: " + windows,
@@ -803,11 +871,11 @@ namespace GamerIntegrity
                     Section = "Drivers",
                     Severity = severity,
                     Title = GetString(item, "name", "Driver"),
-                    Source = signed ? "Signed" : "Unsigned / unknown",
+                    Source = vulnerable ? "Known vulnerable driver catalog" : (signed ? "Signed" : "Unsigned / unknown"),
                     Detail = GetString(item, "path", ""),
                     Extra = extra,
                     When = "",
-                    Confidence = suspicious ? 50 : 0,
+                    Confidence = vulnerable ? GetInt(item, "knownVulnerableDriverConfidence", 70) : (suspicious ? 50 : 0),
                     Score = 0
                 };
             });
@@ -1163,9 +1231,19 @@ namespace GamerIntegrity
             return string.IsNullOrWhiteSpace(cleaned) ? "n/a" : cleaned;
         }
 
-        private static string FirstNonBlank(string value, string fallback)
+        private static string FirstNonBlank(params string[] values)
         {
-            return string.IsNullOrWhiteSpace(value) ? fallback : value;
+            if (values == null) return string.Empty;
+
+            foreach (string value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+            }
+
+            return string.Empty;
         }
 
         private static string NormalizeSeverity(string severity)
@@ -1182,7 +1260,8 @@ namespace GamerIntegrity
         private static string FriendlyWhen(string when)
         {
             if (string.IsNullOrWhiteSpace(when)) return "Undated";
-            return when.Trim();
+            string friendly = ScannerHelpers.FriendlyTimestampText(when.Trim());
+            return string.IsNullOrWhiteSpace(friendly) ? when.Trim() : friendly;
         }
 
         private static bool TryGetObject(JsonElement parent, string name, out JsonElement value)
@@ -1319,7 +1398,7 @@ namespace GamerIntegrity
                     output.Add(value);
                     continue;
                 }
-                string[] emptyPrefixes = { "Token: ", "Domain: ", "Type: ", "Time shown from: ", "Determination: ", "Labels: ", "Tokens: ", "Samples: ", "Manufacturer: ", "Service: ", "Class: ", "Location: ", "Last write: ", "Source: ", "Company: ", "SHA-256: " };
+                string[] emptyPrefixes = { "Token: ", "Domain: ", "Type: ", "Time shown from: ", "Determination: ", "Labels: ", "Tokens: ", "Samples: ", "Identifier: ", "Manufacturer: ", "Service: ", "Class: ", "Location: ", "Last write: ", "Source: ", "Company: ", "SHA-256: " };
                 bool emptyPrefixed = emptyPrefixes.Any(prefix => value.Equals(prefix.TrimEnd(), StringComparison.OrdinalIgnoreCase));
                 if (!emptyPrefixed) output.Add(value);
             }

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace GamerIntegrity
 {
@@ -72,10 +73,12 @@ namespace GamerIntegrity
                 case "Browser History": return 70;
                 case "File Name Scan": return 45;
                 case "Installed Programs": return 55;
+                case "Known Vulnerable Drivers": return 60;
                 case "Drivers": return 55;
                 case "Cleanup Indicators": return 18;
                 case "Boot Security": return 45;
                 case "Hardware Identity": return 40;
+                case "DMA / PCIe Review": return 22;
                 default: return 30;
             }
         }
@@ -131,11 +134,11 @@ namespace GamerIntegrity
             return verdict;
         }
 
-        public static bool WriteJsonReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, string path, bool redacted)
+        public static bool WriteJsonReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<DmaDeviceRecord> dmaDeviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, string path, bool redacted)
         {
             try
             {
-                string content = BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches, browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, cheatingTimeline, integrity, redacted);
+                string content = BuildJsonReport(report, drivers, hardwareRecords, deviceRecords, dmaDeviceRecords, installedProgramMatches, fileMatches, browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, cheatingTimeline, integrity, redacted);
                 if (string.IsNullOrEmpty(content)) return false;
                 File.WriteAllText(path, content, new UTF8Encoding(false));
                 return true;
@@ -156,7 +159,7 @@ namespace GamerIntegrity
             catch { return false; }
         }
 
-        public static string BuildJsonReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, bool redacted)
+        public static string BuildJsonReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<DmaDeviceRecord> dmaDeviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, bool redacted)
         {
             try
             {
@@ -196,6 +199,9 @@ namespace GamerIntegrity
                 Prop(sb, 2, "browserSourceDownloadMatches", browserDownloadMatches.Count, true);
                 Prop(sb, 2, "executionArtifacts", executionArtifacts.Count, true);
                 Prop(sb, 2, "runtimeArtifacts", runtimeArtifacts.Count, true);
+                Prop(sb, 2, "dmaPcieReviewRecords", dmaDeviceRecords.Count, true);
+                Prop(sb, 2, "knownVulnerableDriverMatches", drivers.Count(d => d.KnownVulnerableDriver), true);
+                Prop(sb, 2, "knownVulnerableDriverCatalog", KnownVulnerableDriverCatalog.Version, true);
                 Prop(sb, 2, "sourceProjectGroups", sourceProjects.Count, false);
                 sb.Append(Indent(1)).AppendLine("},");
 
@@ -212,6 +218,7 @@ namespace GamerIntegrity
                 WriteTimelineJson(sb, cheatingTimeline, r, true);
                 WriteDriversJson(sb, drivers, r, true);
                 WriteHardwareJson(sb, hardwareRecords, r, true);
+                WriteDmaPcieJson(sb, dmaDeviceRecords, r, true);
                 WriteDevicesJson(sb, deviceRecords, r, false);
                 sb.AppendLine("}");
                 return sb.ToString();
@@ -219,11 +226,11 @@ namespace GamerIntegrity
             catch { return string.Empty; }
         }
 
-        public static bool WriteHtmlReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, string path, bool redacted)
+        public static bool WriteHtmlReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<DmaDeviceRecord> dmaDeviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, string path, bool redacted)
         {
             try
             {
-                string content = BuildHtmlReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches, browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, cheatingTimeline, integrity, redacted);
+                string content = BuildHtmlReport(report, drivers, hardwareRecords, deviceRecords, dmaDeviceRecords, installedProgramMatches, fileMatches, browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, cheatingTimeline, integrity, redacted);
                 if (string.IsNullOrEmpty(content)) return false;
                 File.WriteAllText(path, content, new UTF8Encoding(false));
                 return true;
@@ -231,7 +238,7 @@ namespace GamerIntegrity
             catch { return false; }
         }
 
-        public static string BuildHtmlReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, bool redacted)
+        public static string BuildHtmlReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<DmaDeviceRecord> dmaDeviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, bool redacted)
         {
             try
             {
@@ -252,8 +259,9 @@ namespace GamerIntegrity
                 int mediumCount = GetSeverityCount(severityCounts, Severity.Medium);
                 int nonWindowsDrivers = drivers.Count(d => !d.WindowsSystemPath);
                 int untrustedNonWindowsDrivers = drivers.Count(d => !d.WindowsSystemPath && d.FileExists && !d.SignedTrusted);
-                string summaryText = BuildSummaryText(report, installedForReport, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
-                var caseSummaryItems = BuildCaseSummaryItems(fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects);
+                int knownVulnerableDriverMatches = drivers.Count(d => d.KnownVulnerableDriver);
+                string summaryText = BuildSummaryText(report, installedForReport, fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, dmaDeviceRecords, drivers);
+                var caseSummaryItems = BuildCaseSummaryItems(fileMatches, browserMatches, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects, dmaDeviceRecords, drivers);
 
                 var sb = new StringBuilder(1024 * 768);
                 sb.AppendLine("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
@@ -265,11 +273,11 @@ namespace GamerIntegrity
                 string subtitle = string.IsNullOrWhiteSpace(integrity.ComputerName) ? "Local PC report" : r.Text(integrity.ComputerName);
                 sb.AppendLine("<div class=\"wiki-topbar\"><div class=\"wiki-topbar-inner\"><div class=\"wiki-brand\"><div class=\"wiki-title\">GamerIntegrity Report</div><div class=\"wiki-subtitle\">" + H(subtitle) + "</div></div><div class=\"wiki-search\"><input id=\"wikiSearch\" type=\"search\" placeholder=\"Search report: detections, paths, tools, hashes, timestamps...\" autocomplete=\"off\"></div></div></div>");
                 sb.AppendLine("<div class=\"wiki-layout\"><aside class=\"wiki-sidebar\"><div class=\"wiki-sidebar-title\">Table of Contents</div>");
-                sb.AppendLine("<a href=\"#determination\">Overview</a><a href=\"#case-summary\">Summary</a><a href=\"#scan-totals\">Scan Totals</a><a href=\"#timeline\">Timeline</a><a href=\"#scoring\">Scoring</a><a href=\"#findings\">Detections</a><a href=\"#drivers\">Drivers</a><a href=\"#hardware\">Hardware</a><a href=\"#usb\">External Devices</a><a href=\"#software-source\">Projects</a><a href=\"#execution\">Launch</a><a href=\"#browser-source-download\">Downloads</a><a href=\"#runtime\">Startup</a><a href=\"#installed-programs\">Reversal</a><a href=\"#browser-keywords\">Browser</a><a href=\"#file-names\">Files / Folders</a>");
+                sb.AppendLine("<a href=\"#determination\">Overview</a><a href=\"#case-summary\">Summary</a><a href=\"#scan-totals\">Scan Totals</a><a href=\"#timeline\">Timeline</a><a href=\"#scoring\">Scoring</a><a href=\"#findings\">Detections</a><a href=\"#drivers\">Drivers</a><a href=\"#hardware\">Hardware</a><a href=\"#dma-pcie\">DMA / PCIe</a><a href=\"#usb\">External Devices</a><a href=\"#software-source\">Projects</a><a href=\"#execution\">Launch</a><a href=\"#browser-source-download\">Downloads</a><a href=\"#runtime\">Startup</a><a href=\"#installed-programs\">Reversal</a><a href=\"#browser-keywords\">Browser</a><a href=\"#file-names\">Files / Folders</a>");
                 sb.AppendLine("</aside><main class=\"wiki-main\"><div id=\"noSearchResults\" class=\"no-search-results\">No visible report rows matched the search.</div>");
 
                 if (redacted)
-                    sb.AppendLine("<div class=\"notice redaction-banner search-item\"><strong>Redacted export:</strong> identity fields, local user paths, hardware serials, MAC addresses, USB serial portions, and report-folder paths have been masked for sharing.</div>");
+                    sb.AppendLine("<div class=\"notice redaction-banner search-item\"><strong>Redacted export:</strong> identity fields, local user paths, hardware serials, MAC addresses, USB/PCI device IDs, and report-folder paths have been masked for sharing.</div>");
 
                 sb.AppendLine("<section id=\"determination\" class=\"wiki-section\" style=\"margin-top:0\"><div class=\"verdict " + ScannerHelpers.VerdictCssClass(verdict.Level) + " search-item\"><div class=\"metric-label\">Overview</div><div class=\"verdict-title\">" + H(verdict.Label) + "</div><div class=\"verdict-summary\">" + H(verdict.Summary) + "</div><div class=\"small\" style=\"margin-top:10px\"><strong>Basis:</strong> " + H(verdict.Basis) + "</div></div></section>");
 
@@ -296,7 +304,9 @@ namespace GamerIntegrity
                 AppendMetricCard(sb, "High severity findings", highCount.ToString(CultureInfo.InvariantCulture), "");
                 AppendMetricCard(sb, "Medium severity findings", mediumCount.ToString(CultureInfo.InvariantCulture), "");
                 AppendMetricCard(sb, "Non-Windows loaded drivers", nonWindowsDrivers.ToString(CultureInfo.InvariantCulture), "Untrusted: " + untrustedNonWindowsDrivers);
+                AppendMetricCard(sb, "Known vulnerable drivers", knownVulnerableDriverMatches.ToString(CultureInfo.InvariantCulture), KnownVulnerableDriverCatalog.Version);
                 AppendMetricCard(sb, "Hardware identity records", hardwareRecords.Count.ToString(CultureInfo.InvariantCulture), "SMBIOS / disks / MACs");
+                AppendMetricCard(sb, "DMA / PCIe records", dmaDeviceRecords.Count.ToString(CultureInfo.InvariantCulture), "Present: " + dmaDeviceRecords.Count(d => d.CurrentlyPresent).ToString(CultureInfo.InvariantCulture));
                 AppendMetricCard(sb, "External USB devices", deviceRecords.Count.ToString(CultureInfo.InvariantCulture), "USB / USB storage history");
                 AppendMetricCard(sb, "File/folder name matches", fileMatches.Count.ToString(CultureInfo.InvariantCulture), "Names only");
                 AppendMetricCard(sb, "Detected browser profiles", browserHistorySources.Count.ToString(CultureInfo.InvariantCulture), "Profiles/stores");
@@ -313,6 +323,7 @@ namespace GamerIntegrity
                 WriteFindingsHtml(sb, ordered, r);
                 WriteDriversHtml(sb, drivers, r);
                 WriteHardwareHtml(sb, hardwareRecords, r);
+                WriteDmaPcieHtml(sb, dmaDeviceRecords, r);
                 WriteDevicesHtml(sb, deviceRecords, r);
                 WriteSourceProjectsHtml(sb, sourceProjects, r);
                 WriteExecutionHtml(sb, executionArtifacts, r);
@@ -596,11 +607,20 @@ namespace GamerIntegrity
                 Prop(sb, 3, "name", d.Name, true);
                 Prop(sb, 3, "path", r.Path(d.Path), true);
                 Prop(sb, 3, "company", d.Company, true);
+                Prop(sb, 3, "productName", d.ProductName, true);
+                Prop(sb, 3, "originalFileName", d.OriginalFileName, true);
                 Prop(sb, 3, "sha256", d.Sha256, true);
                 Prop(sb, 3, "fileExists", d.FileExists, true);
                 Prop(sb, 3, "windowsSystemPath", d.WindowsSystemPath, true);
                 Prop(sb, 3, "signed", d.SignedTrusted, true);
-                Prop(sb, 3, "suspiciousNamePattern", d.SuspiciousNamePattern, false);
+                Prop(sb, 3, "suspiciousNamePattern", d.SuspiciousNamePattern, true);
+                Prop(sb, 3, "knownVulnerableDriver", d.KnownVulnerableDriver, true);
+                Prop(sb, 3, "knownVulnerableDriverId", d.KnownVulnerableDriverId, true);
+                Prop(sb, 3, "knownVulnerableDriverName", d.KnownVulnerableDriverName, true);
+                Prop(sb, 3, "knownVulnerableDriverMatch", d.KnownVulnerableDriverMatch, true);
+                Prop(sb, 3, "knownVulnerableDriverReason", d.KnownVulnerableDriverReason, true);
+                Prop(sb, 3, "knownVulnerableDriverSeverity", d.KnownVulnerableDriverSeverity.ToString(), true);
+                Prop(sb, 3, "knownVulnerableDriverConfidence", d.KnownVulnerableDriverConfidence, false);
                 sb.Append(Indent(2)).Append("}").AppendLine(i + 1 < items.Count ? "," : "");
             }
             sb.Append(Indent(1)).Append("]").AppendLine(comma ? "," : "");
@@ -613,6 +633,40 @@ namespace GamerIntegrity
             {
                 var h = items[i];
                 sb.Append(Indent(2)).Append("{\"category\": \"").Append(J(h.Category)).Append("\", \"name\": \"").Append(J(h.Name)).Append("\", \"value\": \"").Append(J(r.Text(h.Value))).Append("\", \"source\": \"").Append(J(h.Source)).Append("\"}").AppendLine(i + 1 < items.Count ? "," : "");
+            }
+            sb.Append(Indent(1)).Append("]").AppendLine(comma ? "," : "");
+        }
+
+
+
+        private static void WriteDmaPcieJson(StringBuilder sb, List<DmaDeviceRecord> items, Redactor r, bool comma)
+        {
+            sb.Append(Indent(1)).AppendLine("\"dmaPcieReviewRecords\": [");
+            for (int i = 0; i < items.Count; i++)
+            {
+                var d = items[i];
+                sb.Append(Indent(2)).AppendLine("{");
+                Prop(sb, 3, "enumerator", d.Enumerator, true);
+                Prop(sb, 3, "deviceId", r.DeviceId(d.DeviceId), true);
+                Prop(sb, 3, "name", r.Text(d.Name), true);
+                Prop(sb, 3, "manufacturer", r.Text(d.Manufacturer), true);
+                Prop(sb, 3, "service", d.Service, true);
+                Prop(sb, 3, "className", d.ClassName, true);
+                Prop(sb, 3, "classGuid", d.ClassGuid, true);
+                Prop(sb, 3, "location", r.Text(d.Location), true);
+                Prop(sb, 3, "hardwareIds", r.DeviceId(d.HardwareIds), true);
+                Prop(sb, 3, "compatibleIds", r.DeviceId(d.CompatibleIds), true);
+                Prop(sb, 3, "firstInstallTime", d.FirstInstallTime, true);
+                Prop(sb, 3, "installTime", d.InstallTime, true);
+                Prop(sb, 3, "lastArrivalTime", d.LastArrivalTime, true);
+                Prop(sb, 3, "lastRemovalTime", d.LastRemovalTime, true);
+                Prop(sb, 3, "bestObservedTime", DmaPcieRecordBestTime(d), true);
+                Prop(sb, 3, "currentlyPresent", d.CurrentlyPresent, true);
+                Prop(sb, 3, "source", d.Source, true);
+                Prop(sb, 3, "reviewReason", r.Text(d.ReviewReason), true);
+                Prop(sb, 3, "severity", d.Severity.ToString(), true);
+                Prop(sb, 3, "confidence", d.Confidence, false);
+                sb.Append(Indent(2)).Append("}").AppendLine(i + 1 < items.Count ? "," : "");
             }
             sb.Append(Indent(1)).Append("]").AppendLine(comma ? "," : "");
         }
@@ -664,6 +718,7 @@ namespace GamerIntegrity
                 case "Source Projects":
                     return true;
                 case "Installed Programs":
+                case "Known Vulnerable Drivers":
                 case "Drivers":
                 case "Cleanup Indicators":
                     return FindingMentionsCheatTooling(finding);
@@ -750,14 +805,15 @@ namespace GamerIntegrity
                 bool firstDate = true;
                 foreach (var group in datedGroups)
                 {
-                    sb.Append("<details").Append(firstDate ? " open" : "").Append("><summary>").Append(H(group.Key)).Append(" <span class=\"summary-meta\">").Append(group.Count()).AppendLine(" event(s)</span></summary>");
+                    sb.Append("<details").Append(firstDate ? " open" : "").Append("><summary>").Append(H(ScannerHelpers.FriendlyDateText(group.Key))).Append(" <span class=\"summary-meta\">").Append(group.Count()).AppendLine(" event(s)</span></summary>");
                     sb.AppendLine("<table><thead><tr><th>Time</th><th>Event</th><th>Source</th><th>Evidence</th><th>Confidence</th></tr></thead><tbody>");
                     foreach (var e in group.OrderByDescending(e => e.When))
                     {
-                        sb.Append("<tr class=\"search-item\"><td class=\"mono\">").Append(H(ScannerHelpers.FriendlyTimestampText(e.When))).Append("</td><td>");
+                        string evidenceDisplay = TimelineEvidenceDisplayText(e);
+                        sb.Append("<tr class=\"search-item\"><td class=\"mono\">").Append(H(ScannerHelpers.FriendlyTimeText(e.When))).Append("</td><td>");
                         AppendSeverityBadge(sb, e.Severity);
-                        sb.Append("<br><span class=\"finding-title\">").Append(H(e.EventType)).Append("</span></td><td>").Append(H(e.Source)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(e.Summary))).Append("</div><div class=\"mono small\">").Append(H(r.Text(e.Evidence))).Append("</div>");
-                        if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Time shown from: ").Append(H(e.TimeType)).Append("</div>");
+                        sb.Append("<br><span class=\"finding-title\">").Append(H(e.EventType)).Append("</span></td><td>").Append(H(e.Source)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(e.Summary))).Append("</div><div class=\"mono small\">").Append(H(r.Text(ScannerHelpers.FriendlyTimestampText(evidenceDisplay)))).Append("</div>");
+                        if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Source time: ").Append(H(e.TimeType)).Append("</div>");
                         sb.Append("</td><td>").Append(e.Confidence).AppendLine("%</td></tr>");
                     }
                     sb.AppendLine("</tbody></table></details>");
@@ -777,14 +833,72 @@ namespace GamerIntegrity
             {
                 foreach (var e in undated)
                 {
+                    string evidenceDisplay = TimelineEvidenceDisplayText(e);
                     sb.Append("<tr class=\"search-item\"><td>");
                     AppendSeverityBadge(sb, e.Severity);
-                    sb.Append("<br><span class=\"finding-title\">").Append(H(e.EventType)).Append("</span></td><td>").Append(H(e.Source)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(e.Summary))).Append("</div><div class=\"mono small\">").Append(H(r.Text(e.Evidence))).Append("</div>");
-                    if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Time shown from: ").Append(H(e.TimeType)).Append("</div>");
+                    sb.Append("<br><span class=\"finding-title\">").Append(H(e.EventType)).Append("</span></td><td>").Append(H(e.Source)).Append("</td><td><div class=\"finding-title\">").Append(H(r.Text(e.Summary))).Append("</div><div class=\"mono small\">").Append(H(r.Text(ScannerHelpers.FriendlyTimestampText(evidenceDisplay)))).Append("</div>");
+                    if (!string.IsNullOrWhiteSpace(e.TimeType)) sb.Append("<div class=\"small\">Source time: ").Append(H(e.TimeType)).Append("</div>");
                     sb.Append("</td><td>").Append(e.Confidence).AppendLine("%</td></tr>");
                 }
             }
             sb.AppendLine("</tbody></table></details></details></section>");
+        }
+
+        private static string TimelineEvidenceDisplayText(CheatingTimelineEvent e)
+        {
+            if (e == null || string.IsNullOrWhiteSpace(e.Evidence)) return "";
+
+            string evidence = e.Evidence.Trim();
+            if (!IsBrowserTimelineEvent(e)) return evidence;
+
+            return RemoveEmbeddedTimelineTimestamp(evidence, e.TimeType);
+        }
+
+        private static bool IsBrowserTimelineEvent(CheatingTimelineEvent e)
+        {
+            string type = ScannerHelpers.ToLowerSafe(e.EventType);
+            string timeType = ScannerHelpers.ToLowerSafe(e.TimeType);
+            return type.Contains("browser") || timeType.Contains("browser");
+        }
+
+        private static string RemoveEmbeddedTimelineTimestamp(string evidence, string timeType)
+        {
+            string[] parts = evidence.Split(new[] { " | " }, StringSplitOptions.None)
+                .Select(p => ScannerHelpers.CollapseWhitespaceForDisplay(p).Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .ToArray();
+
+            if (parts.Length < 3) return evidence;
+
+            int keep = parts.Length;
+            string last = parts[keep - 1];
+            if (IsTimelineTimeTypePart(last, timeType)) keep--;
+
+            if (keep > 0 && LooksLikeTimelineTimestampPart(parts[keep - 1])) keep--;
+
+            if (keep <= 0 || keep == parts.Length) return evidence;
+            return string.Join(" | ", parts.Take(keep));
+        }
+
+        private static bool IsTimelineTimeTypePart(string value, string timeType)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            string t = ScannerHelpers.ToLowerSafe(timeType);
+            if (!string.IsNullOrWhiteSpace(t) && string.Equals(v, t, StringComparison.OrdinalIgnoreCase)) return true;
+            return v.Contains("browser visit time") ||
+                   v.Contains("browser download time") ||
+                   v.Contains("browser history file time") ||
+                   v.Contains("download time") ||
+                   v.Contains("visit time");
+        }
+
+        private static bool LooksLikeTimelineTimestampPart(string value)
+        {
+            string v = ScannerHelpers.CollapseWhitespaceForDisplay(value ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            return Regex.IsMatch(v, @"^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}(:\d{2})?(\s*(Z|[+-]\d{2}:?\d{2}))?$", RegexOptions.IgnoreCase) ||
+                   Regex.IsMatch(v, @"^[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}\s+(AM|PM)$", RegexOptions.IgnoreCase) ||
+                   Regex.IsMatch(v, @"^\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}(:\d{2})?(\s*(AM|PM))?(\s*(Z|[+-]\d{2}:?\d{2}))?$", RegexOptions.IgnoreCase);
         }
 
         private static void WriteScoreBreakdownHtml(StringBuilder sb, ScoreAssessment assessment)
@@ -840,9 +954,9 @@ namespace GamerIntegrity
         private static void WriteDriversHtml(StringBuilder sb, List<DriverInfo> items, Redactor r)
         {
             sb.AppendLine("<section id=\"drivers\" class=\"wiki-section\"><details><summary>Non-Windows loaded drivers</summary>");
-            sb.AppendLine("<p class=\"small\">This lists loaded drivers outside the Windows directory with trust, service, path, and hash information.</p>");
-            sb.AppendLine("<table><thead><tr><th>Name</th><th>Trust</th><th>Company</th><th>Service</th><th>Path / SHA-256</th></tr></thead><tbody>");
-            var shown = items.Where(d => !d.WindowsSystemPath).OrderByDescending(d => d.SuspiciousNamePattern).ThenBy(d => d.Name).Take(1500).ToList();
+            sb.AppendLine("<p class=\"small\">This lists loaded drivers outside the Windows directory with trust, service, path, hash, and embedded vulnerable-driver catalog context. The catalog is compiled into the app and does not require internet access.</p>");
+            sb.AppendLine("<table><thead><tr><th>Name</th><th>Trust</th><th>Company / product</th><th>Service</th><th>Path / SHA-256</th></tr></thead><tbody>");
+            var shown = items.Where(d => !d.WindowsSystemPath || d.KnownVulnerableDriver).OrderByDescending(d => d.KnownVulnerableDriver).ThenByDescending(d => d.SuspiciousNamePattern).ThenBy(d => d.Name).Take(1500).ToList();
             if (shown.Count == 0)
             {
                 AppendEmptyRow(sb, 5, "No non-Windows loaded drivers were found.");
@@ -852,8 +966,18 @@ namespace GamerIntegrity
                 foreach (var d in shown)
                 {
                     sb.Append("<tr class=\"search-item\"><td>").Append(H(d.Name));
+                    if (d.KnownVulnerableDriver) sb.Append(" <span class=\"badge ").Append(ScannerHelpers.SeverityCssClass(d.KnownVulnerableDriverSeverity)).Append("\">Known vulnerable</span>");
                     if (d.SuspiciousNamePattern) sb.Append(" <span class=\"badge sev-medium\">Pattern</span>");
-                    sb.Append("</td><td>").Append(d.SignedTrusted ? "Trusted" : "Untrusted/Unknown").Append("</td><td>").Append(H(string.IsNullOrWhiteSpace(d.Company) ? "Unknown" : d.Company)).Append("</td><td>");
+                    if (d.KnownVulnerableDriver)
+                    {
+                        sb.Append("<br><span class=\"small\">").Append(H(d.KnownVulnerableDriverName)).Append("</span>");
+                        sb.Append("<br><span class=\"small\">").Append(H(d.KnownVulnerableDriverMatch)).Append("</span>");
+                        if (!string.IsNullOrWhiteSpace(d.KnownVulnerableDriverReason)) sb.Append("<br><span class=\"small\">").Append(H(d.KnownVulnerableDriverReason)).Append("</span>");
+                    }
+                    sb.Append("</td><td>").Append(d.SignedTrusted ? "Trusted" : "Untrusted/Unknown").Append("</td><td>").Append(H(string.IsNullOrWhiteSpace(d.Company) ? "Unknown" : d.Company));
+                    if (!string.IsNullOrWhiteSpace(d.ProductName)) sb.Append("<br><span class=\"small\">").Append(H(d.ProductName)).Append("</span>");
+                    if (!string.IsNullOrWhiteSpace(d.OriginalFileName)) sb.Append("<br><span class=\"small\">Original: ").Append(H(d.OriginalFileName)).Append("</span>");
+                    sb.Append("</td><td>");
                     if (d.Service != null) sb.Append(H(d.Service.ServiceName)).Append("<br><span class=\"small\">").Append(H(d.Service.StartType)).Append(" / ").Append(H(d.Service.CurrentState)).Append("</span>");
                     else sb.Append("<span class=\"small\">No matched service</span>");
                     sb.Append("</td><td class=\"mono\">").Append(H(r.Path(d.Path)));
@@ -874,11 +998,51 @@ namespace GamerIntegrity
             sb.AppendLine("</tbody></table></details></section>");
         }
 
+
+
+        private static void WriteDmaPcieHtml(StringBuilder sb, List<DmaDeviceRecord> items, Redactor r)
+        {
+            sb.AppendLine("<section id=\"dma-pcie\" class=\"wiki-section\"><details><summary>DMA / PCIe review</summary>");
+            sb.AppendLine("<p class=\"small\">This lists PCI/PCIe, Thunderbolt, USB4, CFexpress, FPGA/DMA-adjacent, and SetupAPI device context retained by Windows. This is review context, not proof of cheating by itself.</p>");
+            sb.AppendLine("<table><thead><tr><th>Review</th><th>Device</th><th>When</th><th>Present</th><th>Class / Service</th><th>Device ID</th></tr></thead><tbody>");
+            if (items.Count == 0)
+            {
+                AppendEmptyRow(sb, 6, "Windows did not return DMA / PCIe review records.");
+            }
+            else
+            {
+                foreach (var d in items.OrderByDescending(x => x.Severity).ThenByDescending(x => x.Confidence).ThenByDescending(x => x.CurrentlyPresent).Take(900))
+                {
+                    sb.Append("<tr class=\"search-item\"><td>");
+                    AppendSeverityBadge(sb, d.Severity);
+                    sb.Append("<br><span class=\"small\">").Append(d.Confidence.ToString(CultureInfo.InvariantCulture)).Append("% confidence</span>");
+                    string displayName = DmaPcieDisplayName(d);
+                    sb.Append("</td><td>").Append(H(r.Text(displayName)));
+                    if (!string.IsNullOrWhiteSpace(d.Manufacturer)) sb.Append("<br><span class=\"small\">").Append(H(r.Text(DmaPcieFriendlyText(d.Manufacturer, "")))).Append("</span>");
+                    if (!string.IsNullOrWhiteSpace(d.Name) && !string.Equals(displayName, d.Name, StringComparison.OrdinalIgnoreCase)) sb.Append("<br><span class=\"small\">Raw name: ").Append(H(r.Text(d.Name))).Append("</span>");
+                    sb.Append("<br><span class=\"small\">").Append(H(r.Text(NormalizeReasonFragments(d.ReviewReason)))).Append("</span>");
+                    sb.Append("</td><td class=\"mono\">Best: ").Append(H(ScannerHelpers.FriendlyTimestampText(DmaPcieRecordBestTime(d))));
+                    if (!string.IsNullOrWhiteSpace(d.LastArrivalTime)) sb.Append("<br>Last arrival: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.LastArrivalTime)));
+                    if (!string.IsNullOrWhiteSpace(d.LastRemovalTime)) sb.Append("<br>Last removal: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.LastRemovalTime)));
+                    if (!string.IsNullOrWhiteSpace(d.FirstInstallTime)) sb.Append("<br>First install: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.FirstInstallTime)));
+                    if (!string.IsNullOrWhiteSpace(d.InstallTime)) sb.Append("<br>Install/log: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.InstallTime)));
+                    sb.Append("</td><td>").Append(d.CurrentlyPresent ? "Yes" : "No/Unknown");
+                    sb.Append("</td><td>").Append(H(d.ClassName)).Append("<br><span class=\"small\">").Append(H(d.Service)).Append(" / ").Append(H(d.ClassGuid)).Append("</span>");
+                    sb.Append("<br><span class=\"small\">").Append(H(d.Source)).Append("</span>");
+                    sb.Append("</td><td class=\"mono\">").Append(H(r.DeviceId(d.DeviceId)));
+                    if (!string.IsNullOrWhiteSpace(d.Location)) sb.Append("<br><span class=\"small\">").Append(H(r.Text(d.Location))).Append("</span>");
+                    if (!string.IsNullOrWhiteSpace(d.HardwareIds)) sb.Append("<br><span class=\"small\">HW: ").Append(H(r.DeviceId(d.HardwareIds))).Append("</span>");
+                    sb.AppendLine("</td></tr>");
+                }
+            }
+            sb.AppendLine("</tbody></table></details></section>");
+        }
+
         private static void WriteDevicesHtml(StringBuilder sb, List<DeviceConnectionRecord> items, Redactor r)
         {
             sb.AppendLine("<section id=\"usb\" class=\"wiki-section\"><details><summary>External USB connection history</summary>");
             sb.AppendLine("<p class=\"small\">This lists USB and USB storage devices retained by Windows, including available arrival/removal times.</p>");
-            sb.AppendLine("<table><thead><tr><th>Device</th><th>When</th><th>Present</th><th>Type / Service</th><th>Device ID</th></tr></thead><tbody>");
+            sb.AppendLine("<table><thead><tr><th>Device</th><th>When</th><th>Present</th><th>Type / Service</th><th>Connection record</th></tr></thead><tbody>");
             if (items.Count == 0)
             {
                 AppendEmptyRow(sb, 5, "Windows did not return retained USB device-history records.");
@@ -887,15 +1051,22 @@ namespace GamerIntegrity
             {
                 foreach (var d in items)
                 {
-                    sb.Append("<tr class=\"search-item\"><td>").Append(H(r.Text(string.IsNullOrWhiteSpace(d.Description) ? "Unknown USB device" : d.Description)));
-                    if (!string.IsNullOrWhiteSpace(d.Manufacturer)) sb.Append("<br><span class=\"small\">").Append(H(r.Text(d.Manufacturer))).Append("</span>");
+                    string deviceName = FriendlyExternalDeviceName(d, r);
+                    string manufacturer = ScannerHelpers.FriendlyWindowsDeviceText(r.Text(d.Manufacturer), "");
+                    string location = ScannerHelpers.FriendlyWindowsDeviceText(r.Text(d.Location), "");
+
+                    sb.Append("<tr class=\"search-item\"><td>").Append(H(deviceName));
+                    if (!string.IsNullOrWhiteSpace(manufacturer)) sb.Append("<br><span class=\"small\">").Append(H(manufacturer)).Append("</span>");
                     sb.Append("</td><td class=\"mono\">Best: ").Append(H(ScannerHelpers.FriendlyTimestampText(DeviceRecordBestTime(d))));
                     if (!string.IsNullOrWhiteSpace(d.LastArrivalTime)) sb.Append("<br>Last arrival: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.LastArrivalTime)));
                     if (!string.IsNullOrWhiteSpace(d.LastRemovalTime)) sb.Append("<br>Last removal: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.LastRemovalTime)));
                     if (!string.IsNullOrWhiteSpace(d.FirstInstallTime)) sb.Append("<br>First install: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.FirstInstallTime)));
                     if (!string.IsNullOrWhiteSpace(d.InstallTime)) sb.Append("<br>Install: ").Append(H(ScannerHelpers.FriendlyTimestampText(d.InstallTime)));
-                    sb.Append("</td><td>").Append(d.CurrentlyPresent ? "Yes" : "No").Append("</td><td>").Append(d.MassStorage ? "Mass storage" : "USB device").Append("<br><span class=\"small\">").Append(H(d.ClassName)).Append(" / ").Append(H(d.Service)).Append("</span></td><td class=\"mono\">").Append(H(r.DeviceId(d.DeviceId)));
-                    if (!string.IsNullOrWhiteSpace(d.Location)) sb.Append("<br><span class=\"small\">").Append(H(r.Text(d.Location))).Append("</span>");
+                    sb.Append("</td><td>").Append(d.CurrentlyPresent ? "Yes" : "No").Append("</td><td>").Append(d.MassStorage ? "Mass storage" : "USB device").Append("<br><span class=\"small\">").Append(H(d.ClassName)).Append(" / ").Append(H(d.Service)).Append("</span></td><td>").Append(H(DeviceConnectionSummary(d)));
+                    string friendlyId = DeviceConnectionDisplayId(d.DeviceId);
+                    if (!string.IsNullOrWhiteSpace(friendlyId)) sb.Append("<br><span class=\"small mono\">Identifier: ").Append(H(r.DeviceId(friendlyId))).Append("</span>");
+                    if (!string.IsNullOrWhiteSpace(d.Source)) sb.Append("<br><span class=\"small\">Source: ").Append(H(r.Text(d.Source))).Append("</span>");
+                    if (!string.IsNullOrWhiteSpace(location)) sb.Append("<br><span class=\"small\">Location: ").Append(H(location)).Append("</span>");
                     sb.AppendLine("</td></tr>");
                 }
             }
@@ -1017,7 +1188,7 @@ namespace GamerIntegrity
             if (!string.IsNullOrWhiteSpace(displayTitle)) sb.Append("<div class=\"finding-title\">").Append(H(displayTitle)).Append("</div>");
             else sb.Append("<div class=\"finding-title\">").Append(H(BrowserEvidenceLabel(m))).Append("</div>");
             if (!string.IsNullOrWhiteSpace(m.When)) sb.Append("<div class=\"small\">Time found: ").Append(H(ScannerHelpers.FriendlyTimestampText(m.When))).Append("</div>");
-            else if (!string.IsNullOrWhiteSpace(m.TimeType)) sb.Append("<div class=\"small\">Time shown from: ").Append(H(m.TimeType)).Append("</div>");
+            else if (!string.IsNullOrWhiteSpace(m.TimeType)) sb.Append("<div class=\"small\">Source time: ").Append(H(m.TimeType)).Append("</div>");
             if (!string.IsNullOrWhiteSpace(domain)) sb.Append("<div>Domain: ").Append(H(domain)).Append("</div>");
             if (!string.IsNullOrWhiteSpace(displayUrl)) sb.Append("<div class=\"mono small\">").Append(download ? "Source URL: " : "URL: ").Append(H(displayUrl)).Append("</div>");
             if (download && !string.IsNullOrWhiteSpace(m.LocalPath)) sb.Append("<div class=\"mono small\">Local path: ").Append(H(r.Path(m.LocalPath))).Append("</div>");
@@ -1207,7 +1378,7 @@ namespace GamerIntegrity
             return name;
         }
 
-        private static List<string> BuildCaseSummaryItems(List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects)
+        private static List<string> BuildCaseSummaryItems(List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<DmaDeviceRecord> dmaDeviceRecords, List<DriverInfo> drivers)
         {
             int directSource = fileMatches.Count(IsDirectCheatSourceMatch);
             int mapper = fileMatches.Count(m => ContainsInsensitive(m.Token, "kdmapper") || ContainsInsensitive(m.Label, "mapper"));
@@ -1218,6 +1389,9 @@ namespace GamerIntegrity
             int injectorExec = executionArtifacts.Count(e => ContainsInsensitive(e.Token, "injector") || ContainsInsensitive(e.Label, "injector"));
             int strongBrowser = browserMatches.Count(IsStrongBrowserHistoryMatch);
             int runtime = runtimeArtifacts.Count;
+            int dmaPriority = dmaDeviceRecords.Count(d => d.Severity >= Severity.Medium);
+            int dmaPresent = dmaDeviceRecords.Count(d => d.CurrentlyPresent);
+            int knownVulnerableDrivers = drivers.Count(d => d.KnownVulnerableDriver);
 
             var items = new List<string>();
             if (trueDownloads > 0 && sourceProjects.Count > 0 && (highExec > 0 || injectorExec > 0)) items.Add("Corroboration chain present: browser download/local-path records, grouped source/build evidence, and execution traces were all found.");
@@ -1228,16 +1402,18 @@ namespace GamerIntegrity
             if (trueDownloads > 0) items.Add(trueDownloads + " browser download/local-path record(s) point to cheat, injector, source, or tooling files.");
             if (highExec > 0) items.Add(highExec + " high-confidence execution trace(s) were found in AmCache or Prefetch.");
             if (injectorExec > 0) items.Add(injectorExec + " injector execution trace(s) were found.");
-            if (mapper > 0) items.Add(mapper + " kernel mapper/bypass artifact(s) were found on disk.");
+            if (mapper > 0) items.Add(mapper + " kernel mapper / driver-loading artifact(s) were found on disk.");
             if (injectorFiles > 0) items.Add(injectorFiles + " injector/spoofer/trace-cleaner style file artifact(s) were found on disk.");
             if (strongBrowser > 0) items.Add(strongBrowser + " strong cheat-domain/search browser-history indicator(s) were found.");
             if (browserSourceLeads > 0) items.Add(browserSourceLeads + " browser source/history lead(s) were found beyond local-download records.");
             if (runtime > 0) items.Add(runtime + " running/startup/service artifact(s) matched configured cheat/tooling indicators.");
+            if (knownVulnerableDrivers > 0) items.Add(knownVulnerableDrivers + " embedded known-vulnerable driver catalog match(es) were found; review these as driver-loading context, not standalone proof.");
+            if (dmaPriority > 0) items.Add(dmaPriority + " DMA / PCIe hardware record(s) need priority review; treat as context unless corroborated by other evidence.");
             if (items.Count == 0) items.Add("No direct cheat/tooling evidence was found in the enabled high-signal categories.");
             return items;
         }
 
-        private static string BuildSummaryText(ScanReport report, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects)
+        private static string BuildSummaryText(ScanReport report, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<DmaDeviceRecord> dmaDeviceRecords, List<DriverInfo> drivers)
         {
             int directSource = fileMatches.Count(IsDirectCheatSourceMatch);
             int mapper = fileMatches.Count(m => ContainsInsensitive(m.Token, "kdmapper") || ContainsInsensitive(m.Label, "mapper"));
@@ -1248,6 +1424,8 @@ namespace GamerIntegrity
             int downloadPaths = browserDownloadMatches.Count(d => !string.IsNullOrWhiteSpace(d.LocalPath));
             int sourceLeads = browserDownloadMatches.Count(d => string.IsNullOrWhiteSpace(d.LocalPath));
             int strongBrowser = browserMatches.Count(IsStrongBrowserHistoryMatch);
+            int dmaPriority = dmaDeviceRecords.Count(d => d.Severity >= Severity.Medium);
+            int knownVulnerableDrivers = drivers.Count(d => d.KnownVulnerableDriver);
 
             var parts = new List<string>();
             if (sourceProjects.Count > 0) parts.Add(sourceProjects.Count + " grouped cheat software/source-project roots");
@@ -1263,6 +1441,8 @@ namespace GamerIntegrity
             int uniqueInstalled = UniqueInstalledProgramCount(installedProgramMatches);
             if (uniqueInstalled > 0) parts.Add(uniqueInstalled + " unique installed cheat/decompilation tools");
             if (runtimeArtifacts.Count > 0) parts.Add(runtimeArtifacts.Count + " launch/startup/retained-history artifacts");
+            if (knownVulnerableDrivers > 0) parts.Add(knownVulnerableDrivers + " embedded known-vulnerable driver catalog matches");
+            if (dmaPriority > 0) parts.Add(dmaPriority + " DMA / PCIe records needing priority review");
             string core = parts.Count == 0 ? "no direct cheat/tooling evidence in the enabled evidence categories" : string.Join(", ", parts);
             return "This PC shows " + core + ". Check direct launches/recent-app activity, downloads, grouped projects, browser source/download hits, and installed/running tools before lower-signal history-only findings.";
         }
@@ -1438,6 +1618,77 @@ namespace GamerIntegrity
         }
 
         private static string DeviceRecordBestTime(DeviceConnectionRecord r)
+        {
+            if (!string.IsNullOrWhiteSpace(r.LastArrivalTime)) return r.LastArrivalTime;
+            if (!string.IsNullOrWhiteSpace(r.InstallTime)) return r.InstallTime;
+            if (!string.IsNullOrWhiteSpace(r.FirstInstallTime)) return r.FirstInstallTime;
+            if (!string.IsNullOrWhiteSpace(r.LastRemovalTime)) return r.LastRemovalTime;
+            return "not reported";
+        }
+
+
+
+        private static string DmaPcieDisplayName(DmaDeviceRecord r)
+        {
+            if (r == null) return "PCI/PCIe device";
+            string display = DmaPcieFriendlyText(r.Name, r.DeviceId);
+            string lower = ScannerHelpers.ToLowerSafe(display);
+            if (string.IsNullOrWhiteSpace(display) || lower.StartsWith("dvi:") || lower.StartsWith("ndv:") || lower.StartsWith("inf:") || lower.Contains(" pci\\ven_") || lower.Contains("usb4\\"))
+            {
+                display = string.IsNullOrWhiteSpace(r.DeviceId) ? "PCI/PCIe device" : r.DeviceId;
+            }
+            return display;
+        }
+
+        private static string DmaPcieFriendlyText(string value, string fallback)
+        {
+            string clean = ScannerHelpers.CollapseWhitespaceForDisplay(value ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(clean)) return ScannerHelpers.Trim(fallback);
+            int semi = clean.LastIndexOf(';');
+            if (semi >= 0 && semi < clean.Length - 1)
+            {
+                string after = clean.Substring(semi + 1).Trim();
+                if (!string.IsNullOrWhiteSpace(after) && !after.StartsWith("%", StringComparison.Ordinal)) return after;
+            }
+            var match = Regex.Match(clean, @"^@[^,]+,%[^%]+%;(.+)$", RegexOptions.IgnoreCase);
+            if (match.Success && !string.IsNullOrWhiteSpace(match.Groups[1].Value)) return match.Groups[1].Value.Trim();
+            if (clean.StartsWith("@", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(fallback)) return ScannerHelpers.Trim(fallback);
+            return clean;
+        }
+
+        private static string NormalizeReasonFragments(string value)
+        {
+            return string.Join("; ", (value ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(v => ScannerHelpers.CollapseWhitespaceForDisplay(v).Trim())
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static string DeviceConnectionSummary(DeviceConnectionRecord r)
+        {
+            if (r == null) return "Retained USB connection record";
+            string summary = r.MassStorage ? "Retained USB storage connection record" : "Retained USB device connection record";
+            if (r.CurrentlyPresent) summary += " currently present";
+            return summary;
+        }
+
+        private static string FriendlyExternalDeviceName(DeviceConnectionRecord record, Redactor r)
+        {
+            if (record == null) return "USB device";
+            string fallback = record.MassStorage ? "USB storage device" : "USB device";
+            return ScannerHelpers.FriendlyWindowsDeviceText(r.Text(record.Description), fallback);
+        }
+
+        private static string DeviceConnectionDisplayId(string deviceId)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId)) return "";
+            string clean = deviceId.Trim().Replace('/', '\\');
+            string[] parts = clean.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2) return parts[0] + "\\" + parts[1];
+            return clean;
+        }
+
+        private static string DmaPcieRecordBestTime(DmaDeviceRecord r)
         {
             if (!string.IsNullOrWhiteSpace(r.LastArrivalTime)) return r.LastArrivalTime;
             if (!string.IsNullOrWhiteSpace(r.InstallTime)) return r.InstallTime;
@@ -1644,6 +1895,8 @@ body.searching .no-search-results.show { display:block; }
                 v = System.Text.RegularExpressions.Regex.Replace(v, @"\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b", "<REDACTED_UUID>");
                 v = System.Text.RegularExpressions.Regex.Replace(v, @"((SerialNumber|IdentifyingNumber|UUID)\s*=\s*')([^']*)(')", "$1<REDACTED_HARDWARE_ID>$4", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 v = System.Text.RegularExpressions.Regex.Replace(v, "USB(STOR)?\\\\[^\\s\"']+", "<REDACTED_USB_DEVICE_ID>");
+                v = System.Text.RegularExpressions.Regex.Replace(v, "PCI\\\\[^\\s\"']+", "<REDACTED_PCI_DEVICE_ID>");
+                v = System.Text.RegularExpressions.Regex.Replace(v, "USB4\\\\[^\\s\"']+", "<REDACTED_USB4_DEVICE_ID>");
                 return v;
             }
 

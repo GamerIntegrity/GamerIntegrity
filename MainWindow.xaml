@@ -162,7 +162,7 @@
                     </Border>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="GamerIntegrity" Style="{StaticResource Text.Brand}" />
-                        <TextBlock Text="Non-gate kept PC checker for all gamers" Style="{StaticResource Text.Small}" />
+                        <TextBlock Text="Portable PC checker for gamers" Style="{StaticResource Text.Small}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -220,7 +220,7 @@
 
                     <Border Grid.Row="2" Style="{StaticResource Sidebar.Panel}" Margin="0,14,0,0">
                         <StackPanel>
-                            <TextBlock Text="v1.0.4" FontWeight="SemiBold" />
+                            <TextBlock Text="v1.0.5" FontWeight="SemiBold" />
                             <TextBlock Text="All rights reserved by DayZero Anticheat." Style="{StaticResource Text.Small}" Margin="0,6,0,10" />
                             <Button Style="{StaticResource Button.Support}" Content="Support DayZero" Click="BuyMeCoffeeButton_Click" />
                         </StackPanel>

@@ -32,6 +32,7 @@ namespace GamerIntegrity
                         report.AddLimitation("File scan", "Scope cap", root, "File/folder scan stopped after reaching the configured safety cap. Some later paths were not enumerated.", Severity.Low);
                         break;
                     }
+                    if (ScannerHelpers.IsGamerIntegritySelfNoise(entry)) continue;
                     string name = Path.GetFileName(entry);
                     var best = ScannerService.BestRuleMatch(name, rules);
                     best = ScannerService.AdjustRuleForEvidenceContext(best, entry, "FileName");
@@ -162,7 +163,7 @@ namespace GamerIntegrity
             if (name == "node_modules" || name == ".git" || name == ".vs" || name == "packages" || name == "obj" || name == "temp" || name == "cache") return true;
             if (lower.Contains(@"\windowsapps\") || lower.Contains(@"\program files\windowsapps")) return true;
             if (lower.Contains(@"\windows defender advanced threat protection\") || lower.Contains(@"\microsoft\windows defender\")) return true;
-            if (lower.Contains(@"\gamerintegrity_wpf_") || lower.Contains(@"\gamerintegrity\release\reports\")) return true;
+            if (lower.Contains(@"\gamerintegrity_wpf_") || lower.Contains(@"\gamerintegrity\release\reports\") || ScannerHelpers.IsGamerIntegritySelfNoise(lower)) return true;
             return false;
         }
 
@@ -177,6 +178,7 @@ namespace GamerIntegrity
             if (lower.Contains(@"\windows defender advanced threat protection\") || lower.Contains(@"\microsoft\windows defender\")) return true;
             if (lower.Contains("wingetdownloader.exe") || lower.Contains("sensesampleuploader.exe")) return true;
             if (lower.Contains("gamerintegrity_wpf_v") && lower.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return true;
+            if (ScannerHelpers.IsGamerIntegritySelfNoise(lower)) return true;
             if ((token == "trace" || token == "traces") && lower.Contains("gamerintegrity")) return true;
             if (IsSourceFileNameToken(token) && !fileName.EndsWith(token, StringComparison.OrdinalIgnoreCase)) return true;
             if (IsCommonAssetOrWebFile(fileName) && IsSourceFileNameToken(token)) return true;

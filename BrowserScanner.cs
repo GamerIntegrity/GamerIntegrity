@@ -20,13 +20,13 @@ namespace GamerIntegrity
             "esp", "player esp", "loot esp", "radar hack", "chams", "spinbot", "ragebot", "legitbot", "silent aim",
             "bhop", "bunnyhop", "bunny hop", "rcs", "no recoil", "norecoil", "skin changer", "skinchanger",
             "injector", "dll injector", "extreme injector", "mapper", "manual map", "manual mapper", "kdmapper", "kd mapper",
-            "driver mapper", "kernel mapper", "spoofer", "hwid spoofer", "bypass", "unban", "cheat engine", "cheatengine"
+            "driver mapper", "kernel mapper", "spoofer", "hwid spoofer", "unban", "cheat engine", "cheatengine"
         };
 
         private static readonly string[] ExplicitCheatContextTerms =
         {
             "cs2 cheat", "cs2 esp", "cs2 external", "cs2 internal", "counter-strike 2 cheat", "roblox cheat", "valorant cheat",
-            "trace cleaner", "vanguard bypass", "eac bypass", "battleye bypass", "bypass method", "download cheats",
+            "trace cleaner", "vanguard bypass", "eac bypass", "battleye bypass", "faceit bypass", "ricochet bypass", "anti-cheat bypass", "anticheat bypass", "download cheats",
             "hacks cheats", "cheats & hacks", "cheats and hacks", "game hacking and cheats", "cheat source",
             "hack source", "cheat src", "cheat loader", "cheat provider", "cheat shop", "cheat store", "cheat marketplace"
         };
@@ -46,7 +46,7 @@ namespace GamerIntegrity
 
         private static readonly string[] LegitReviewOverrideTerms =
         {
-            "bypass", "spoofer", "injector", "mapper", "kdmapper", "aimbot", "triggerbot", "wallhack", "esp",
+            "spoofer", "injector", "mapper", "kdmapper", "aimbot", "triggerbot", "wallhack", "esp",
             "ragebot", "spinbot", "cheat provider", "cheat shop", "cheat store"
         };
 
@@ -309,7 +309,7 @@ namespace GamerIntegrity
         private static void AddHistoryRuleMatches(BrowserHistorySource source, string url, string title, string when, string timeType, List<FileNameRule> rules, List<BrowserHistoryMatch> matches)
         {
             string haystack = ScannerHelpers.CollapseWhitespaceForDisplay(JoinNonBlank(url, title));
-            if (string.IsNullOrWhiteSpace(haystack)) return;
+            if (string.IsNullOrWhiteSpace(haystack) || IsSelfNoiseBrowserEvidence(haystack) || IsKnownBenignBrowserEvidence(haystack)) return;
             var domainRule = BuildBrowserDomainRule(url, false);
             if (domainRule != null)
             {
@@ -358,7 +358,7 @@ namespace GamerIntegrity
         private static void AddDownloadRuleMatches(BrowserHistorySource source, string url, string localPath, string snippet, string when, string timeType, List<FileNameRule> rules, List<BrowserDownloadMatch> matches, bool actualDownloadRecord)
         {
             string haystack = ScannerHelpers.CollapseWhitespaceForDisplay(JoinNonBlank(url, localPath, snippet));
-            if (string.IsNullOrWhiteSpace(haystack)) return;
+            if (string.IsNullOrWhiteSpace(haystack) || IsSelfNoiseBrowserEvidence(haystack) || IsKnownBenignBrowserEvidence(haystack)) return;
             bool hasLocalPath = !string.IsNullOrWhiteSpace(localPath);
             actualDownloadRecord = actualDownloadRecord || hasLocalPath || LooksLikeDownloadUrl(url);
             if (!actualDownloadRecord) return;
@@ -425,10 +425,68 @@ namespace GamerIntegrity
 
             if (result.DownloadMatches.Count > 0)
             {
-                var sample = string.Join("\n", result.DownloadMatches.Take(12).Select(m => "- " + m.Browser + " " + m.Profile + ": " + m.Token + " | " + (string.IsNullOrWhiteSpace(m.Url) ? m.LocalPath : m.Url)));
+                var sample = BuildBrowserDownloadFindingSample(result.DownloadMatches, 12);
                 report.AddFinding("Browser Source/Download Evidence", "Browser source/download evidence found", sample, result.DownloadMatches.Max(m => m.Severity), Math.Min(95, result.DownloadMatches.Max(m => m.Confidence)), Math.Min(160, result.DownloadMatches.Sum(m => m.Score)));
             }
             else report.AddFinding("Browser Source/Download Evidence", "No browser source/download evidence found", "Browser history/download databases were checked with direct SQLite parsing for URL, source, and local download records.", Severity.Info, 60, 0);
+        }
+
+        private static string BuildBrowserDownloadFindingSample(List<BrowserDownloadMatch> matches, int limit)
+        {
+            var rows = matches
+                .GroupBy(m => BrowserDownloadDisplayKey(m), StringComparer.OrdinalIgnoreCase)
+                .Select(g => BuildBrowserDownloadFindingSampleRow(g.ToList()))
+                .Where(row => !string.IsNullOrWhiteSpace(row))
+                .Take(limit);
+
+            return string.Join("\n", rows);
+        }
+
+        private static string BrowserDownloadDisplayKey(BrowserDownloadMatch match)
+        {
+            string urlKey = NormalizeBrowserDownloadUrlForMerge(match.Url);
+            if (!string.IsNullOrWhiteSpace(urlKey)) return JoinNonBlank(match.Browser, match.Profile, urlKey);
+
+            string localKey = NormalizeBrowserLocalPathForMerge(match.LocalPath);
+            if (!string.IsNullOrWhiteSpace(localKey)) return JoinNonBlank(match.Browser, match.Profile, localKey);
+
+            return JoinNonBlank(match.Browser, match.Profile, ExtractBrowserItemKey(match.Snippet));
+        }
+
+        private static string BuildBrowserDownloadFindingSampleRow(List<BrowserDownloadMatch> items)
+        {
+            if (items == null || items.Count == 0) return "";
+
+            var best = items
+                .OrderByDescending(m => m.Severity)
+                .ThenByDescending(m => m.Confidence)
+                .ThenByDescending(m => m.Score)
+                .ThenByDescending(m => SafeParseWhen(m.When))
+                .First();
+
+            string target = string.IsNullOrWhiteSpace(best.Url) ? best.LocalPath : best.Url;
+            string tokenText = JoinLimited(items.SelectMany(m => SplitTokenText(m.Token)), 6);
+            string suffix = items.Count > 1 ? " (" + items.Count.ToString(CultureInfo.InvariantCulture) + " related record(s) collapsed)" : "";
+
+            return "- " + best.Browser + " " + best.Profile + ": " + tokenText + " | " + target + suffix;
+        }
+
+        private static IEnumerable<string> SplitTokenText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) yield break;
+            foreach (string part in value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string item = part.Trim();
+                if (!string.IsNullOrWhiteSpace(item)) yield return item;
+            }
+        }
+
+        private static DateTime SafeParseWhen(string value)
+        {
+            DateTime dt;
+            if (DateTime.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out dt)) return dt;
+            if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dt)) return dt;
+            return DateTime.MinValue;
         }
 
         private static Dictionary<long, string> ReadChromiumDownloadUrlChains(SqliteConnection connection)
@@ -614,7 +672,39 @@ namespace GamerIntegrity
 
         private static string BrowserDownloadMergeKey(BrowserDownloadMatch match)
         {
-            return JoinNonBlank(match.Browser, match.Profile, string.IsNullOrWhiteSpace(match.Url) ? ExtractBrowserItemKey(match.Snippet) : match.Url, match.LocalPath, match.When);
+            string urlKey = NormalizeBrowserDownloadUrlForMerge(match.Url);
+            string localKey = NormalizeBrowserLocalPathForMerge(match.LocalPath);
+            if (!string.IsNullOrWhiteSpace(urlKey) || !string.IsNullOrWhiteSpace(localKey))
+                return JoinNonBlank(urlKey, localKey);
+            return JoinNonBlank(match.Browser, match.Profile, ExtractBrowserItemKey(match.Snippet));
+        }
+
+
+        private static string NormalizeBrowserDownloadUrlForMerge(string value)
+        {
+            string url = CleanUrlCandidate(value ?? "");
+            if (string.IsNullOrWhiteSpace(url)) return "";
+            try
+            {
+                var uri = new Uri(url);
+                string query = uri.Query ?? "";
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    var match = Regex.Match(query, @"(?:^|[?&])id=([^&]+)", RegexOptions.IgnoreCase);
+                    if (match.Success) return uri.Host.ToLowerInvariant() + uri.AbsolutePath.ToLowerInvariant() + "?id=" + match.Groups[1].Value.ToLowerInvariant();
+                }
+                return uri.Host.ToLowerInvariant() + uri.AbsolutePath.TrimEnd('/').ToLowerInvariant() + query.ToLowerInvariant();
+            }
+            catch
+            {
+                return ScannerHelpers.ToLowerSafe(url.TrimEnd('/'));
+            }
+        }
+
+        private static string NormalizeBrowserLocalPathForMerge(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "";
+            return Regex.Replace(value.Trim(), @"\s+", " ").TrimEnd('\\', '/').ToLowerInvariant();
         }
 
         private static BrowserHistoryMatch MergeBrowserHistoryMatches(List<BrowserHistoryMatch> items)
@@ -644,7 +734,7 @@ namespace GamerIntegrity
         private static FileNameRule BuildBrowserDomainRule(string url, bool sourceOrDownload)
         {
             string domain = NormalizeDomain(DomainFromUrl(url));
-            if (string.IsNullOrWhiteSpace(domain) || IsLegitBrowserReviewContext(url) || !IsCheatSiteDomain(domain)) return null;
+            if (string.IsNullOrWhiteSpace(domain) || IsSelfNoiseBrowserEvidence(url) || IsKnownBenignBrowserEvidence(url) || IsLegitBrowserReviewContext(url) || !IsCheatSiteDomain(domain)) return null;
             return new FileNameRule
             {
                 Token = domain,
@@ -661,11 +751,26 @@ namespace GamerIntegrity
             if (rule == null) return null;
             string token = ScannerHelpers.ToLowerSafe(rule.Token);
             string value = ScannerHelpers.ToLowerSafe(evidenceValue);
+            if (IsSelfNoiseBrowserEvidence(value) || IsKnownBenignBrowserEvidence(value)) return null;
+            bool standaloneBypass = token.Equals("bypass", StringComparison.OrdinalIgnoreCase) && !HasBypassCheatContext(value);
             bool legitContext = IsLegitBrowserReviewContext(value);
             bool strongContext = !legitContext && (BrowserHasStrongContext(value) || hasLocalPath || actualDownloadRecord);
             bool directTerm = !legitContext && (IsStrongBrowserToken(token) || BrowserHasDirectCheatTerm(value));
             bool strongToken = IsStrongBrowserToken(token);
             bool weakToken = !directTerm && (IsWeakBrowserToken(token) || IsWeakBrowserLabel(rule.Label));
+
+            if (standaloneBypass)
+            {
+                return new FileNameRule
+                {
+                    Token = rule.Token,
+                    Category = rule.Category,
+                    Label = "Context-needed browser hit",
+                    Severity = Severity.Low,
+                    Confidence = Math.Min(rule.Confidence, 44),
+                    Score = Math.Min(rule.Score, 4)
+                };
+            }
 
             if (legitContext && !hasLocalPath && !actualDownloadRecord)
             {
@@ -712,23 +817,25 @@ namespace GamerIntegrity
         private static bool IsStrongBrowserSignal(string token, string label, string evidenceValue)
         {
             string joined = ScannerHelpers.ToLowerSafe(JoinNonBlank(token, label, evidenceValue));
-            if (IsLegitBrowserReviewContext(joined)) return false;
+            if (IsSelfNoiseBrowserEvidence(joined) || IsKnownBenignBrowserEvidence(joined) || IsLegitBrowserReviewContext(joined)) return false;
 
             string l = ScannerHelpers.ToLowerSafe(label);
+            string t = ScannerHelpers.ToLowerSafe(token);
+            if ((t.Equals("bypass", StringComparison.OrdinalIgnoreCase) || t.Contains("bypass")) && !HasBypassCheatContext(joined)) return false;
             return ContainsCheatSiteDomain(joined) ||
                    BrowserHasDirectCheatTerm(joined) ||
                    BrowserHasExplicitCheatToolContext(joined) ||
-                   StrongBrowserLabelMatches(l);
+                   StrongBrowserLabelMatches(l, joined);
         }
 
-        private static bool StrongBrowserLabelMatches(string label)
+        private static bool StrongBrowserLabelMatches(string label, string evidenceValue)
         {
             string l = ScannerHelpers.ToLowerSafe(label);
+            if (l.Contains("bypass") && !HasBypassCheatContext(evidenceValue)) return false;
             return l.Contains("cheat site/domain") ||
                    l.Contains("injector") ||
                    l.Contains("mapper") ||
                    l.Contains("spoofer") ||
-                   l.Contains("bypass") ||
                    l.Contains("game cheat") ||
                    l.Contains("game-specific cheat") ||
                    l.Contains("cheat feature") ||
@@ -744,7 +851,7 @@ namespace GamerIntegrity
         private static bool BrowserHasDirectCheatTerm(string value)
         {
             string v = ScannerHelpers.ToLowerSafe(value);
-            if (IsLegitBrowserReviewContext(v)) return false;
+            if (IsSelfNoiseBrowserEvidence(v) || IsKnownBenignBrowserEvidence(v) || IsLegitBrowserReviewContext(v)) return false;
             return BrowserContainsAny(v, DirectBrowserCheatTerms);
         }
 
@@ -904,6 +1011,49 @@ namespace GamerIntegrity
             return string.Join(", ", (values ?? Enumerable.Empty<string>()).Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(Math.Max(1, limit)));
         }
 
+        private static bool IsSelfNoiseBrowserEvidence(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            if (ScannerHelpers.IsGamerIntegritySelfNoise(v)) return true;
+
+            bool gamerIntegrityContext = v.Contains("gamerintegrity") || v.Contains("gamer integrity") || v.Contains("gamer integrity report") || v.Contains("dayzeroanticheat") || v.Contains("dayzero anticheat") || v.Contains("pc checker for gamers") || v.Contains("integrity report");
+            if (gamerIntegrityContext) return true;
+
+            bool localReport = v.Contains("file:///") && (v.Contains("gamerintegrity_report.html") || v.Contains("gamerintegrity_report.json") || v.Contains("\\gamerintegrity\\") || v.Contains("/gamerintegrity/"));
+            if (localReport) return true;
+
+            bool chatgptDevelopment = v.Contains("chatgpt.com") &&
+                (v.Contains("dma device detection limitations") || v.Contains("stability performance pass") || v.Contains("modern c# theme") || v.Contains("c# application conversion") || v.Contains("code review feedback") || v.Contains("external device history update") || v.Contains("github page") || v.Contains("github release") || v.Contains("report layout") || v.Contains("wiki styled"));
+            if (chatgptDevelopment) return true;
+
+            bool gamerIntegrityArchive = v.Contains("gamerintegrity") && (v.Contains(".zip") || v.Contains("source") || v.Contains("release") || v.Contains("github.io"));
+            return gamerIntegrityArchive;
+        }
+
+        private static bool IsKnownBenignBrowserEvidence(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            if ((v.Contains("pandora.com") || v.Contains("www.pandora.com")) && !ContainsCheatSiteDomain(v)) return true;
+            return false;
+        }
+
+        private static bool HasBypassCheatContext(string value)
+        {
+            string v = ScannerHelpers.ToLowerSafe(value);
+            if (string.IsNullOrWhiteSpace(v)) return false;
+            if (ContainsCheatSiteDomain(v)) return true;
+            string[] context =
+            {
+                "anti-cheat", "anticheat", "eac", "easy anti-cheat", "battleye", "battl-eye", "vanguard", "vgk", "vgc", "faceit", "ricochet",
+                "vac", "ban", "unban", "hwid", "spoofer", "spoof", "driver", "kernel", "mapper", "kdmapper", "injector", "dse", "patchguard",
+                "valorant", "fortnite", "apex", "warzone", "cod", "rust", "tarkov", "eft", "cs2", "counter-strike", "roblox", "fivem",
+                "cheat", "cheats", "hack", "hacks", "loader"
+            };
+            return context.Any(t => BrowserTokenMatches(v, t));
+        }
+
         private static bool IsKnownBenignBrowserDownloadMatch(BrowserDownloadMatch match)
         {
             string domain = ScannerHelpers.ToLowerSafe(match.Domain);
@@ -911,6 +1061,7 @@ namespace GamerIntegrity
             string local = ScannerHelpers.ToLowerSafe(match.LocalPath);
             string file = ScannerHelpers.ToLowerSafe(ScannerHelpers.GetFileNameOnly(match.LocalPath));
             string token = ScannerHelpers.ToLowerSafe(match.Token);
+            if (IsSelfNoiseBrowserEvidence(url + " " + local + " " + match.Snippet) || IsKnownBenignBrowserEvidence(url + " " + local + " " + match.Snippet)) return true;
             bool microsoftDomain = domain == "microsoft.com" || domain == "www.microsoft.com" || domain == "download.microsoft.com" || domain == "aka.ms" || domain.EndsWith(".microsoft.com", StringComparison.OrdinalIgnoreCase);
             if (microsoftDomain && (file.Contains("vcredist") || file.Contains("directx") || file.Contains("dxwebsetup") || file.Contains("dotnet"))) return true;
             if ((token == "loader" || token == "cheat.com" || token == "cheats.com") && microsoftDomain && !ContainsAnySuspiciousBrowserToken(url + " " + local)) return true;

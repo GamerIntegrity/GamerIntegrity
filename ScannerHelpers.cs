@@ -16,8 +16,8 @@ namespace GamerIntegrity
 {
     public static class ScannerHelpers
     {
-        public const string ReleaseVersion = "v1.0.4";
-        public const string EvidenceModelVersion = "evidence-v1.0.4";
+        public const string ReleaseVersion = "v1.0.5";
+        public const string EvidenceModelVersion = "evidence-v1.0.5";
 
         public static int Clamp(int value, int low, int high)
         {
@@ -38,6 +38,22 @@ namespace GamerIntegrity
         {
             if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(token)) return false;
             return value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static bool IsGamerIntegritySelfNoise(string value)
+        {
+            string v = ToLowerSafe(value);
+            if (string.IsNullOrWhiteSpace(v)) return false;
+
+            v = v.Replace('/', '\\');
+            if (v.Contains("gamerintegrity_v")) return true;
+            if (v.Contains("gamerintegrity report") || v.Contains("gamerintegrity_report")) return true;
+            if (v.Contains("gamer integrity report")) return true;
+            if (v.Contains("\\gamerintegrity\\release\\") || v.Contains("\\gamerintegrity\\v1.")) return true;
+            if (v.Contains("embedded_vulnerable_driver_catalog")) return true;
+            if (v.Contains("vulnerable_driver_catalog") || v.Contains("vulnerable-driver-catalog") || v.Contains("vulnerable driver catalog")) return true;
+            if (v.Contains("dayzeroanticheat") || v.Contains("dayzero anticheat")) return true;
+            return false;
         }
 
         public static bool StartsWithInsensitive(string value, string prefix)
@@ -104,6 +120,26 @@ namespace GamerIntegrity
             return Regex.Replace(input, "\\s+", " ").Trim();
         }
 
+        public static string FriendlyWindowsDeviceText(string value, string fallback)
+        {
+            string clean = CollapseWhitespaceForDisplay(value ?? "").Trim();
+            string safeFallback = Trim(fallback);
+            if (string.IsNullOrWhiteSpace(clean)) return safeFallback;
+
+            int semi = clean.LastIndexOf(';');
+            if (semi >= 0 && semi < clean.Length - 1)
+            {
+                string after = clean.Substring(semi + 1).Trim();
+                if (!string.IsNullOrWhiteSpace(after) && !after.StartsWith("%", StringComparison.Ordinal)) return after;
+            }
+
+            var resourceMatch = Regex.Match(clean, @"^@[^,]+,%[^%]+%;(.+)$", RegexOptions.IgnoreCase);
+            if (resourceMatch.Success && !string.IsNullOrWhiteSpace(resourceMatch.Groups[1].Value)) return resourceMatch.Groups[1].Value.Trim();
+
+            if (clean.StartsWith("@", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(safeFallback)) return safeFallback;
+            return clean;
+        }
+
         public static string JsonEscape(string value)
         {
             if (value == null) return "";
@@ -145,19 +181,91 @@ namespace GamerIntegrity
 
         public static string CurrentLocalDisplayTimestamp()
         {
-            return DateTime.Now.ToString("M/d/yyyy h:mm tt", CultureInfo.InvariantCulture);
+            return DateTime.Now.ToString("MMM d, yyyy, h:mm tt", CultureInfo.InvariantCulture);
+        }
+
+        public static string FriendlyDateText(string value)
+        {
+            DateTimeOffset dto;
+            if (TryParseReportTimestamp(value, out dto)) return dto.ToLocalTime().ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
+
+            DateTime dateOnly;
+            string trimmed = Trim(value);
+            if (DateTime.TryParseExact(trimmed, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateOnly))
+                return dateOnly.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
+
+            return value ?? "";
+        }
+
+        public static string FriendlyTimeText(string value)
+        {
+            DateTimeOffset dto;
+            if (TryParseReportTimestamp(value, out dto)) return dto.ToLocalTime().ToString("h:mm tt", CultureInfo.InvariantCulture);
+            return FriendlyTimestampText(value);
         }
 
         public static string FriendlyTimestampText(string value)
         {
-            if (string.IsNullOrEmpty(value)) return "";
-            return Regex.Replace(value, "\\b(\\d{4})-(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2})\\b", m =>
+            if (string.IsNullOrWhiteSpace(value)) return "";
+
+            string converted = Regex.Replace(value, "\\b\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}(?: [+-]\\d{2}:\\d{2})?\\b", m =>
             {
-                DateTime dt;
-                if (DateTime.TryParseExact(m.Value, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
-                    return dt.ToString("M/d/yyyy h:mm tt", CultureInfo.InvariantCulture);
+                DateTimeOffset dto;
+                if (TryParseReportTimestamp(m.Value, out dto))
+                    return dto.ToLocalTime().ToString("MMM d, yyyy, h:mm tt", CultureInfo.InvariantCulture);
                 return m.Value;
             });
+
+            converted = Regex.Replace(converted, "\\b\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2}\\b", m =>
+            {
+                DateTimeOffset dto;
+                if (TryParseReportTimestamp(m.Value, out dto))
+                    return dto.ToLocalTime().ToString("MMM d, yyyy, h:mm tt", CultureInfo.InvariantCulture);
+                return m.Value;
+            });
+
+            converted = Regex.Replace(converted, "\\b\\d{4}-\\d{2}-\\d{2}\\b", m =>
+            {
+                DateTime dateOnly;
+                if (DateTime.TryParseExact(m.Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out dateOnly))
+                    return dateOnly.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
+                return m.Value;
+            });
+
+            return converted;
+        }
+
+        private static bool TryParseReportTimestamp(string value, out DateTimeOffset timestamp)
+        {
+            timestamp = default(DateTimeOffset);
+            if (string.IsNullOrWhiteSpace(value)) return false;
+
+            string trimmed = Trim(value);
+            string[] offsetFormats =
+            {
+                "yyyy-MM-dd HH:mm:ss zzz",
+                "yyyy-MM-dd'T'HH:mm:ss zzz",
+                "yyyy-MM-dd'T'HH:mm:sszzz"
+            };
+
+            if (DateTimeOffset.TryParseExact(trimmed, offsetFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out timestamp))
+                return true;
+
+            DateTime dt;
+            string[] localFormats =
+            {
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy/MM/dd HH:mm:ss",
+                "yyyy-MM-dd'T'HH:mm:ss"
+            };
+
+            if (DateTime.TryParseExact(trimmed, localFormats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dt))
+            {
+                timestamp = new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Local));
+                return true;
+            }
+
+            return false;
         }
 
         public static string FileTimeString(string path)
@@ -276,6 +384,26 @@ namespace GamerIntegrity
             {
                 if (!File.Exists(path)) return "";
                 return FileVersionInfo.GetVersionInfo(path).CompanyName ?? "";
+            }
+            catch { return ""; }
+        }
+
+        public static string FileProductName(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return "";
+                return FileVersionInfo.GetVersionInfo(path).ProductName ?? "";
+            }
+            catch { return ""; }
+        }
+
+        public static string FileOriginalFileName(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return "";
+                return FileVersionInfo.GetVersionInfo(path).OriginalFilename ?? "";
             }
             catch { return ""; }
         }
@@ -520,6 +648,8 @@ namespace GamerIntegrity
                 case "Security Center": return "Windows Security Center";
                 case "Hardware Identity": return "Hardware identity";
                 case "External Devices": return "External USB devices";
+                case "DMA / PCIe Review": return "DMA / PCIe hardware review";
+                case "Known Vulnerable Drivers": return "Known vulnerable driver review";
                 case "Drivers": return "Loaded drivers";
                 case "Network": return "Network usage";
                 case "Display": return "Display devices";

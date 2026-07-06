@@ -307,6 +307,31 @@ namespace GamerIntegrity
         public string Source { get; set; } = "";
     }
 
+
+
+    public sealed class DmaDeviceRecord
+    {
+        public string Enumerator { get; set; } = "";
+        public string DeviceId { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Manufacturer { get; set; } = "";
+        public string Service { get; set; } = "";
+        public string ClassName { get; set; } = "";
+        public string ClassGuid { get; set; } = "";
+        public string Location { get; set; } = "";
+        public string HardwareIds { get; set; } = "";
+        public string CompatibleIds { get; set; } = "";
+        public string FirstInstallTime { get; set; } = "";
+        public string InstallTime { get; set; } = "";
+        public string LastArrivalTime { get; set; } = "";
+        public string LastRemovalTime { get; set; } = "";
+        public bool CurrentlyPresent { get; set; }
+        public string Source { get; set; } = "";
+        public string ReviewReason { get; set; } = "";
+        public Severity Severity { get; set; } = Severity.Info;
+        public int Confidence { get; set; }
+    }
+
     public sealed class DriverServiceInfo
     {
         public string ServiceName { get; set; } = "";
@@ -322,11 +347,20 @@ namespace GamerIntegrity
         public string RawPath { get; set; } = "";
         public string Path { get; set; } = "";
         public string Company { get; set; } = "";
+        public string ProductName { get; set; } = "";
+        public string OriginalFileName { get; set; } = "";
         public string Sha256 { get; set; } = "";
         public bool FileExists { get; set; }
         public bool WindowsSystemPath { get; set; }
         public bool SignedTrusted { get; set; }
         public bool SuspiciousNamePattern { get; set; }
+        public bool KnownVulnerableDriver { get; set; }
+        public string KnownVulnerableDriverId { get; set; } = "";
+        public string KnownVulnerableDriverName { get; set; } = "";
+        public string KnownVulnerableDriverMatch { get; set; } = "";
+        public string KnownVulnerableDriverReason { get; set; } = "";
+        public Severity KnownVulnerableDriverSeverity { get; set; } = Severity.Info;
+        public int KnownVulnerableDriverConfidence { get; set; }
         public DriverServiceInfo Service { get; set; }
     }
 }
