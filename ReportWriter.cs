@@ -143,6 +143,19 @@ namespace GamerIntegrity
             catch { return false; }
         }
 
+        public static bool WriteReportContent(string path, string content)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(content) || string.IsNullOrWhiteSpace(path)) return false;
+                string directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+                File.WriteAllText(path, content, new UTF8Encoding(false));
+                return true;
+            }
+            catch { return false; }
+        }
+
         public static string BuildJsonReport(ScanReport report, List<DriverInfo> drivers, List<HardwareRecord> hardwareRecords, List<DeviceConnectionRecord> deviceRecords, List<FileNameMatch> installedProgramMatches, List<FileNameMatch> fileMatches, List<BrowserHistoryMatch> browserMatches, List<BrowserHistorySource> browserHistorySources, List<ExecutionArtifact> executionArtifacts, List<BrowserDownloadMatch> browserDownloadMatches, List<RuntimeArtifact> runtimeArtifacts, List<SourceProjectSummary> sourceProjects, List<CheatingTimelineEvent> cheatingTimeline, ReportIntegrityContext integrity, bool redacted)
         {
             try

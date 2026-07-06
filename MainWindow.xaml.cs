@@ -32,11 +32,20 @@ namespace GamerIntegrity
         private ScanResult _lastScanResult;
         private bool _sidebarShown;
         private string _lastDisplayedProgressStage = string.Empty;
+        private readonly DispatcherTimer _searchDebounceTimer;
 
         public MainWindow()
         {
             InitializeComponent();
             DataContext = _workspace;
+
+            _searchDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+            _searchDebounceTimer.Tick += delegate
+            {
+                _searchDebounceTimer.Stop();
+                ApplyFilter();
+            };
+
             HideSidebarNow();
 
             Loaded += MainWindow_Loaded;
@@ -788,7 +797,7 @@ namespace GamerIntegrity
         private void AddSection(JsonElement root, string arrayName, string title, string description, bool expanded, Func<JsonElement, EvidenceItem> map)
         {
             JsonElement array;
-            var section = new ReportSection(title, description, false);
+            var section = new ReportSection(title, description, expanded);
 
             if (TryGetArray(root, arrayName, out array))
             {
@@ -820,7 +829,14 @@ namespace GamerIntegrity
 
             if (ResultsSection.Visibility == Visibility.Visible)
             {
-                ApplyFilter();
+                if (_searchDebounceTimer == null)
+                {
+                    ApplyFilter();
+                    return;
+                }
+
+                _searchDebounceTimer.Stop();
+                _searchDebounceTimer.Start();
             }
         }
 
@@ -1396,7 +1412,7 @@ namespace GamerIntegrity
         }
 
         public List<EvidenceItem> AllItems { get; } = new List<EvidenceItem>();
-        public ObservableCollection<EvidenceItem> FilteredItems { get; } = new ObservableCollection<EvidenceItem>();
+        public List<EvidenceItem> FilteredItems { get; } = new List<EvidenceItem>();
         public ObservableCollection<EvidenceItem> PagedItems { get; } = new ObservableCollection<EvidenceItem>();
 
         public int CurrentPage
@@ -1461,11 +1477,7 @@ namespace GamerIntegrity
         public void SetFilteredRows(IEnumerable<EvidenceItem> rows)
         {
             FilteredItems.Clear();
-
-            foreach (var row in rows)
-            {
-                FilteredItems.Add(row);
-            }
+            if (rows != null) FilteredItems.AddRange(rows);
 
             CurrentPage = 1;
             RefreshPage();
@@ -1509,6 +1521,8 @@ namespace GamerIntegrity
 
     public sealed class EvidenceItem
     {
+        private string _searchText;
+
         public string Section { get; set; } = "";
         public string Severity { get; set; } = "Info";
         public string Title { get; set; } = "";
@@ -1532,8 +1546,12 @@ namespace GamerIntegrity
         public bool Contains(string query)
         {
             if (string.IsNullOrWhiteSpace(query)) return true;
-            string text = string.Join("\n", new[] { Section, Severity, Title, Source, Detail, Extra, When, ConfidenceText, ScoreText });
-            return text.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (_searchText == null)
+            {
+                _searchText = string.Join("\n", new[] { Section, Severity, Title, Source, Detail, Extra, When, ConfidenceText, ScoreText });
+            }
+
+            return _searchText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 

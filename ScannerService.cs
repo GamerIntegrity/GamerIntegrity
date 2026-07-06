@@ -17,6 +17,8 @@ namespace GamerIntegrity
         private const int MaxFileNameMatches = 2500;
         private const int MaxScannedFileSystemEntries = 250000;
         private const int MaxHistoryBytes = 96 * 1024 * 1024;
+        private const int MaxSingleCachedBrowserHistoryChars = 16 * 1024 * 1024;
+        private const int MaxTotalCachedBrowserHistoryChars = 48 * 1024 * 1024;
 
         public static ScanResult Run(ScanOptions options, IProgress<ScanProgress> progress)
         {
@@ -46,6 +48,7 @@ namespace GamerIntegrity
             var browserHistorySources = new List<BrowserHistorySource>();
             var executionArtifacts = new List<ExecutionArtifact>();
             var browserDownloadMatches = new List<BrowserDownloadMatch>();
+            var browserHistoryContentCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var runtimeArtifacts = new List<RuntimeArtifact>();
             var sourceProjects = new List<SourceProjectSummary>();
             var cheatingTimeline = new List<CheatingTimelineEvent>();
@@ -96,11 +99,11 @@ namespace GamerIntegrity
                 Notify(progress, 86, "USB history check complete: " + deviceRecords.Count + " device record(s) captured.");
 
                 Notify(progress, 88, "Checking local browser history for cheat/provider leads...");
-                browserMatches = ScanBrowserHistoryKeywords(report, browserHistorySources);
+                browserMatches = ScanBrowserHistoryKeywords(report, browserHistorySources, browserHistoryContentCache);
                 Notify(progress, 90, "Browser history check complete: " + browserMatches.Count + " keyword detection(s) across " + browserHistorySources.Count + " detected profile(s).");
 
                 Notify(progress, 91, "Checking browser download/source records...");
-                browserDownloadMatches = ScanBrowserDownloadEvidence(report, browserHistorySources);
+                browserDownloadMatches = ScanBrowserDownloadEvidence(report, browserHistorySources, browserHistoryContentCache);
                 Notify(progress, 92, "Browser download/source check complete: " + browserDownloadMatches.Count + " record(s).");
 
                 if (options.IncludeFileNameScan)
@@ -153,18 +156,10 @@ namespace GamerIntegrity
                 if (options.WriteReports)
                 {
                     Notify(progress, 99, "Exporting the selected report files...");
-                    bool wroteJson = ReportWriter.WriteJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
-                        browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
-                        cheatingTimeline, integrity, jsonPath, false);
-                    bool wroteHtml = ReportWriter.WriteHtmlReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
-                        browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
-                        cheatingTimeline, integrity, htmlPath, false);
-                    bool wroteRedactedJson = ReportWriter.WriteJsonReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
-                        browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
-                        cheatingTimeline, integrity, redactedJsonPath, true);
-                    bool wroteRedactedHtml = ReportWriter.WriteHtmlReport(report, drivers, hardwareRecords, deviceRecords, installedProgramMatches, fileMatches,
-                        browserMatches, browserHistorySources, executionArtifacts, browserDownloadMatches, runtimeArtifacts, sourceProjects,
-                        cheatingTimeline, integrity, redactedHtmlPath, true);
+                    bool wroteJson = ReportWriter.WriteReportContent(jsonPath, jsonContent);
+                    bool wroteHtml = ReportWriter.WriteReportContent(htmlPath, htmlContent);
+                    bool wroteRedactedJson = ReportWriter.WriteReportContent(redactedJsonPath, redactedJsonContent);
+                    bool wroteRedactedHtml = ReportWriter.WriteReportContent(redactedHtmlPath, redactedHtmlContent);
                     bool wroteManifest = ReportWriter.WriteReportIntegrityManifest(integrity, htmlPath, jsonPath, integrity.ManifestPath, false);
                     bool wroteRedactedManifest = ReportWriter.WriteReportIntegrityManifest(redactedCtx, redactedHtmlPath, redactedJsonPath, redactedManifestPath, true);
                     builtReports = builtReports && wroteJson && wroteHtml && wroteRedactedJson && wroteRedactedHtml && wroteManifest && wroteRedactedManifest;
@@ -1308,7 +1303,26 @@ namespace GamerIntegrity
             return ScannerHelpers.RegistryFileTimeValueToString(defaultValue);
         }
 
-        private static List<BrowserHistoryMatch> ScanBrowserHistoryKeywords(ScanReport report, List<BrowserHistorySource> outSources)
+        private static string ReadBrowserHistoryContent(BrowserHistorySource source, Dictionary<string, string> cache)
+        {
+            if (source == null || string.IsNullOrWhiteSpace(source.HistoryPath)) return "";
+
+            string key = source.HistoryPath;
+            string cached;
+            if (cache != null && cache.TryGetValue(key, out cached)) return cached;
+
+            string data = ReadBinaryAsText(key, MaxHistoryBytes);
+            if (cache != null && data.Length > 0 && data.Length <= MaxSingleCachedBrowserHistoryChars)
+            {
+                int currentChars = 0;
+                foreach (string value in cache.Values) currentChars += value == null ? 0 : value.Length;
+                if (currentChars + data.Length <= MaxTotalCachedBrowserHistoryChars) cache[key] = data;
+            }
+
+            return data;
+        }
+
+        private static List<BrowserHistoryMatch> ScanBrowserHistoryKeywords(ScanReport report, List<BrowserHistorySource> outSources, Dictionary<string, string> browserHistoryContentCache)
         {
             var sources = DiscoverBrowserHistorySources();
             outSources.AddRange(sources);
@@ -1317,7 +1331,7 @@ namespace GamerIntegrity
 
             foreach (var source in sources)
             {
-                string data = ReadBinaryAsText(source.HistoryPath, MaxHistoryBytes);
+                string data = ReadBrowserHistoryContent(source, browserHistoryContentCache);
                 if (data.Length == 0) continue;
                 string lower = data.ToLowerInvariant();
                 foreach (var rule in rules)
@@ -1356,14 +1370,14 @@ namespace GamerIntegrity
             return matches;
         }
 
-        private static List<BrowserDownloadMatch> ScanBrowserDownloadEvidence(ScanReport report, List<BrowserHistorySource> sources)
+        private static List<BrowserDownloadMatch> ScanBrowserDownloadEvidence(ScanReport report, List<BrowserHistorySource> sources, Dictionary<string, string> browserHistoryContentCache)
         {
             var matches = new List<BrowserDownloadMatch>();
             var rules = Rules.BrowserDownloadRules();
             if (sources.Count == 0) sources = DiscoverBrowserHistorySources();
             foreach (var source in sources)
             {
-                string data = ReadBinaryAsText(source.HistoryPath, MaxHistoryBytes);
+                string data = ReadBrowserHistoryContent(source, browserHistoryContentCache);
                 if (data.Length == 0) continue;
                 string lower = data.ToLowerInvariant();
                 foreach (var rule in rules)
@@ -1573,16 +1587,19 @@ namespace GamerIntegrity
         private static IEnumerable<string> SafeEnumerateFileSystemEntries(string root)
         {
             var pending = new Stack<string>();
-            pending.Push(root);
+            if (!string.IsNullOrWhiteSpace(root)) pending.Push(root);
+
             while (pending.Count > 0)
             {
                 string dir = pending.Pop();
-                string[] files = new string[0];
-                try { files = Directory.GetFiles(dir); } catch { }
-                foreach (string f in files) yield return f;
-                string[] dirs = new string[0];
-                try { dirs = Directory.GetDirectories(dir); } catch { }
-                foreach (string d in dirs)
+                if (ShouldSkipDirectory(dir)) continue;
+
+                foreach (string f in SafeEnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly))
+                {
+                    yield return f;
+                }
+
+                foreach (string d in SafeEnumerateDirectories(dir))
                 {
                     yield return d;
                     if (!ShouldSkipDirectory(d)) pending.Push(d);
@@ -2257,41 +2274,136 @@ namespace GamerIntegrity
 
         private static FileNameRule BestRuleMatch(string value, List<FileNameRule> rules)
         {
+            if (string.IsNullOrWhiteSpace(value) || rules == null || rules.Count == 0) return null;
+
+            string normalizedValue = ScannerHelpers.NormalizeNameForMatch(value);
+            string paddedNormalizedValue = " " + normalizedValue + " ";
+            string lowerValue = ScannerHelpers.ToLowerSafe(value);
+            string compactValue = null;
+
             FileNameRule best = null;
             foreach (var rule in rules)
             {
-                if (!ScannerHelpers.RuleMatchesLoose(value, rule.Token)) continue;
-                if (best == null || rule.Score > best.Score || (rule.Score == best.Score && rule.Confidence > best.Confidence) || (rule.Score == best.Score && rule.Confidence == best.Confidence && rule.Severity > best.Severity)) best = rule;
+                if (rule == null || string.IsNullOrWhiteSpace(rule.Token)) continue;
+
+                string normalizedToken = ScannerHelpers.NormalizeNameForMatch(rule.Token);
+                if (normalizedToken.Length == 0) continue;
+
+                bool matched = paddedNormalizedValue.Contains(" " + normalizedToken + " ");
+
+                if (!matched)
+                {
+                    string lowerToken = ScannerHelpers.ToLowerSafe(rule.Token);
+                    matched = lowerToken.Length >= 6 && lowerValue.Contains(lowerToken);
+
+                    if (!matched)
+                    {
+                        if (compactValue == null) compactValue = CompactAlphaNumeric(lowerValue);
+                        string compactToken = CompactAlphaNumeric(lowerToken);
+                        matched = compactToken.Length >= 8 && compactValue.Contains(compactToken);
+                    }
+                }
+
+                if (!matched) continue;
+
+                if (best == null || rule.Score > best.Score ||
+                    (rule.Score == best.Score && rule.Confidence > best.Confidence) ||
+                    (rule.Score == best.Score && rule.Confidence == best.Confidence && rule.Severity > best.Severity))
+                {
+                    best = rule;
+                }
             }
+
             return best;
+        }
+
+        private static string CompactAlphaNumeric(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            var sb = new StringBuilder(value.Length);
+            foreach (char ch in value)
+            {
+                if (char.IsLetterOrDigit(ch)) sb.Append(char.ToLowerInvariant(ch));
+            }
+            return sb.ToString();
         }
 
         private static IEnumerable<string> SafeEnumerateFiles(string dir, string pattern, SearchOption option)
         {
-            try { return Directory.EnumerateFiles(dir, pattern, option).ToList(); }
-            catch { return new string[0]; }
+            if (string.IsNullOrWhiteSpace(dir)) yield break;
+
+            var pending = new Stack<string>();
+            pending.Push(dir);
+            string safePattern = string.IsNullOrWhiteSpace(pattern) ? "*" : pattern;
+
+            while (pending.Count > 0)
+            {
+                string current = pending.Pop();
+
+                string[] files = Array.Empty<string>();
+                try { files = Directory.GetFiles(current, safePattern); } catch { }
+                foreach (string file in files) yield return file;
+
+                if (option != SearchOption.AllDirectories) continue;
+
+                string[] dirs = Array.Empty<string>();
+                try { dirs = Directory.GetDirectories(current); } catch { }
+                foreach (string child in dirs)
+                {
+                    if (!IsReparsePoint(child)) pending.Push(child);
+                }
+            }
         }
 
         private static IEnumerable<string> SafeEnumerateDirectories(string dir)
         {
-            try { return Directory.EnumerateDirectories(dir).ToList(); }
-            catch { return new string[0]; }
+            if (string.IsNullOrWhiteSpace(dir)) yield break;
+
+            string[] dirs = Array.Empty<string>();
+            try { dirs = Directory.GetDirectories(dir); } catch { }
+            foreach (string child in dirs)
+            {
+                if (!IsReparsePoint(child)) yield return child;
+            }
+        }
+
+        private static bool IsReparsePoint(string path)
+        {
+            try { return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0; }
+            catch { return true; }
         }
 
         private static string ReadBinaryAsText(string path, int maxBytes)
         {
+            if (string.IsNullOrWhiteSpace(path) || maxBytes <= 0) return "";
+
             try
             {
-                byte[] bytes;
                 using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 {
-                    int length = (int)Math.Min(fs.Length, maxBytes);
-                    bytes = new byte[length];
-                    fs.ReadExactly(bytes, 0, length);
+                    int remaining = (int)Math.Min(Math.Min(fs.Length, maxBytes), int.MaxValue);
+                    if (remaining <= 0) return "";
+
+                    var ascii = new StringBuilder(remaining);
+                    byte[] buffer = new byte[Math.Min(64 * 1024, remaining)];
+
+                    while (remaining > 0)
+                    {
+                        int wanted = Math.Min(buffer.Length, remaining);
+                        int read = fs.Read(buffer, 0, wanted);
+                        if (read <= 0) break;
+
+                        for (int i = 0; i < read; i++)
+                        {
+                            byte b = buffer[i];
+                            ascii.Append(b >= 32 && b <= 126 ? (char)b : ' ');
+                        }
+
+                        remaining -= read;
+                    }
+
+                    return ascii.ToString();
                 }
-                var ascii = new StringBuilder(bytes.Length);
-                foreach (byte b in bytes) ascii.Append(b >= 32 && b <= 126 ? (char)b : ' ');
-                return ascii.ToString();
             }
             catch { return ""; }
         }
